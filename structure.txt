@@ -1,0 +1,48 @@
+.
+├── .env.example
+├── .gitignore
+├── .obsidian
+│   ├── app.json
+│   ├── appearance.json
+│   ├── core-plugins.json
+│   └── workspace.json
+├── LICENSE
+├── README.md
+├── apps
+│   ├── api
+│   │   ├── package-lock.json
+│   │   ├── package.json
+│   │   └── src
+│   │       ├── jobs
+│   │       │   ├── analyze.ts
+│   │       │   ├── deliver-webhook.ts
+│   │       │   ├── transcribe.ts
+│   │       │   └── validate-recording.ts
+│   │       ├── lib
+│   │       │   ├── claude.ts
+│   │       │   ├── db.ts
+│   │       │   ├── groq.ts
+│   │       │   ├── queue.ts
+│   │       │   └── storage.ts
+│   │       └── routes
+│   │           ├── public.ts
+│   │           └── sessions.ts
+│   ├── package-lock.json
+│   ├── structure.txt
+│   └── web
+│       ├── app
+│       │   └── capture
+│       │       └── [token]
+│       │           └── page.tsx
+│       └── components
+│           └── Recorder.tsx
+├── claude.md
+├── docker-compose.yml
+├── package-lock.json
+├── packages
+│   ├── db
+│   └── types
+├── structure.txt
+└── voice_micro_feedback_sdk_api_spec.pdf
+
+16 directories, 30 files

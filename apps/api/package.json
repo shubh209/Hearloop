@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
+    "groq-sdk": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
+}

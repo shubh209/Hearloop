@@ -1,4 +1,4 @@
-# Voxli — Voice Micro-Feedback Platform
+# Hearloop — Voice Micro-Feedback Platform
 
 Embeddable voice feedback widget + API for businesses. Customers tap, speak 5 seconds, done. Business receives transcript, sentiment, topics, and urgency via webhook.
 
@@ -13,6 +13,3 @@ Embeddable voice feedback widget + API for businesses. Customers tap, speak 5 se
 - Session state machine: created → processing → completed
 - Auth: secret API keys (partners), scoped session tokens (widget), HMAC (webhooks)
 - Fixed topic taxonomy: staff_friendliness, wait_time, service_quality, etc.
-
-## Build Order
-Week 1→4 per spec. API-first, hosted capture second, widget third.
