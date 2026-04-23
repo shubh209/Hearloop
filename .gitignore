@@ -3,3 +3,4 @@
 /.env
 /claude.md
 /.ssh/*
+/.env.example
