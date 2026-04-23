@@ -1,13 +1,13 @@
 // hearloop/apps/api/src/lib/db.ts
 
-import { Kysely, PostgresDialect } from "kysely";
+import { Generated, Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
 
 export interface SessionsTable {
-  id: string;
+  id: Generated<string>;
   partner_id: string;
   public_token: string;
-  status:
+  status: Generated<
     | "created"
     | "opened"
     | "recording"
@@ -16,29 +16,30 @@ export interface SessionsTable {
     | "processing"
     | "completed"
     | "failed"
-    | "expired";
+    | "expired"
+  >;
   failure_reason: string | null;
   external_event_id: string | null;
   max_duration_sec: number;
   metadata_json: string | null;
   expires_at: Date;
-  created_at: Date;
-  updated_at: Date;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface RecordingsTable {
-  id: string;
+  id: Generated<string>;
   session_id: string;
   storage_key: string;
   mime_type: string;
   duration_ms: number | null;
   size_bytes: number;
   sha256_hash: string;
-  created_at: Date;
+  created_at: Generated<Date>;
 }
 
 export interface AnalysesTable {
-  id: string;
+  id: Generated<string>;
   session_id: string;
   transcript: string | null;
   detected_language: string | null;
@@ -47,37 +48,47 @@ export interface AnalysesTable {
   sentiment_score: number | null;
   topics_json: string | null;
   moderation_json: string | null;
-  created_at: Date;
-  updated_at: Date;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ApiKeysTable {
+  id: Generated<string>;
+  partner_id: string;
+  key_hash: string;
+  revoked_at: Date | null;
+  last_used_at: Date | null;
+  created_at: Generated<Date>;
 }
 
 export interface PartnersTable {
-  id: string;
+  id: Generated<string>;
   name: string;
-  status: "active" | "suspended";
+  status: Generated<"active" | "suspended">;
   webhook_url: string | null;
   allowed_origins: string | null;
   default_config_json: string | null;
-  created_at: Date;
+  created_at: Generated<Date>;
 }
 
 export interface WebhookDeliveriesTable {
-  id: string;
+  id: Generated<string>;
   partner_id: string;
   session_id: string;
   event_type: string;
   payload_json: string;
-  status: "pending" | "delivered" | "failed" | "dead";
-  attempt_count: number;
+  status: Generated<"pending" | "delivered" | "failed" | "dead">;
+  attempt_count: Generated<number>;
   response_code: number | null;
   last_attempted_at: Date | null;
-  created_at: Date;
+  created_at: Generated<Date>;
 }
 
 export interface Database {
   sessions: SessionsTable;
   recordings: RecordingsTable;
   analyses: AnalysesTable;
+  api_keys: ApiKeysTable;
   partners: PartnersTable;
   webhook_deliveries: WebhookDeliveriesTable;
 }

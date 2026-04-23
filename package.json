@@ -12,5 +12,15 @@
   "devDependencies": {
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1032.0",
+    "@aws-sdk/s3-request-presigner": "^3.1032.0",
+    "bullmq": "^5.74.1",
+    "fastify": "^5.8.5",
+    "graphify": "^1.0.0",
+    "kysely": "^0.28.16",
+    "pg": "^8.20.0",
+    "react": "^19.2.5"
   }
 }

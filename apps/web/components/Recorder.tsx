@@ -10,7 +10,7 @@ type RecorderState =
   | "ready"
   | "recording"
   | "preview"
-  | "uploading"cd hearloop/apps/web && npm install
+  | "uploading"
   | "submitted"
   | "error";
 
