@@ -78,23 +78,17 @@ app.addHook("onRequest", async (req, reply) => {
 
 // --- Routes ---
 app.register(sessionRoutes, { prefix: "/v1" });
-app.register(publicRoutes, { prefix: "/v1/public" });
+app.register(publicRoutes, { prefix: "/v1" });
 
 // --- Health check ---
 app.get("/health", async () => ({ status: "ok", ts: new Date() }));
 
 // --- Workers ---
 function startWorkers() {
-  const validateWorker = createWorker(
-    "validate-recording",
-    async (job: Job) => {
-      await runValidateRecordingJob(job.data);
-    }
-  );
-
   const transcribeWorker = createWorker(
     "transcribe",
     async (job: Job) => {
+      console.log("Processing transcribe job:", job.id, job.data);
       await runTranscribeJob(job.data);
     }
   );
@@ -102,13 +96,23 @@ function startWorkers() {
   const analyzeWorker = createWorker(
     "analyze",
     async (job: Job) => {
+      console.log("Processing analyze job:", job.id, job.data);
       await runAnalyzeJob(job.data);
+    }
+  );
+
+  const validateWorker = createWorker(
+    "validate-recording",
+    async (job: Job) => {
+      console.log("Processing validate job:", job.id, job.data);
+      await runValidateRecordingJob(job.data);
     }
   );
 
   const webhookWorker = createWorker(
     "deliver-webhook",
     async (job: Job) => {
+      console.log("Processing webhook job:", job.id, job.data);
       await runDeliverWebhookJob(job.data);
     }
   );

@@ -51,7 +51,7 @@ export function createWorker(
   jobName: JobName,
   handler: (job: Job) => Promise<void>
 ): Worker {
-  return new Worker(
+  const worker = new Worker(
     jobName === "deliver-webhook" ? "hearloop-webhooks" : "hearloop-jobs",
     async (job: Job) => {
       if (job.name !== jobName) return;
@@ -62,6 +62,20 @@ export function createWorker(
       concurrency: jobName === "deliver-webhook" ? 20 : 5,
     }
   );
+
+  worker.on("failed", (job, err) => {
+    console.error(`Job ${job?.id} failed:`, err.message);
+  });
+
+  worker.on("error", (err) => {
+    console.error(`Worker ${jobName} error:`, err.message);
+  });
+
+  worker.on("completed", (job) => {
+    console.log(`Job ${job.id} completed`);
+  });
+
+  return worker;
 }
 
 // --- Enqueue helpers ---
@@ -74,7 +88,7 @@ export async function enqueueTranscribe(payload: {
   promptText?: string;
 }): Promise<void> {
   await queue.add("transcribe", payload, {
-    jobId: `transcribe:${payload.sessionId}`, // deduplication
+    jobId: `transcribe-${payload.sessionId}`, // deduplication
   });
 }
 
@@ -84,7 +98,7 @@ export async function enqueueAnalyze(payload: {
   languageHint?: string | null;
 }): Promise<void> {
   await queue.add("analyze", payload, {
-    jobId: `analyze:${payload.sessionId}`,
+    jobId: `analyze-${payload.sessionId}`,
   });
 }
 
@@ -94,7 +108,7 @@ export async function enqueueWebhook(payload: {
   partnerId: string;
 }): Promise<void> {
   await webhookQueue.add("deliver-webhook", payload, {
-    jobId: `webhook:${payload.eventType}:${payload.sessionId}`,
+    jobId: `webhook-${payload.eventType}:${payload.sessionId}`,
   });
 }
 
@@ -106,7 +120,7 @@ export async function enqueueExpireSession(
     "expire-session",
     { sessionId },
     {
-      jobId: `expire:${sessionId}`,
+      jobId: `expire-${sessionId}`,
       delay: delayMs,
     }
   );

@@ -238,7 +238,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.send({ sessionId: id, status: session.status });
       }
 
-      if (!["uploaded", "recording"].includes(session.status)) {
+      if (!["opened", "recording", "uploaded"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
       }
 
