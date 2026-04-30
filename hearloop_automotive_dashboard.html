@@ -1,0 +1,343 @@
+
+<h2 class="sr-only">Hearloop automotive service dashboard showing voice feedback analytics across locations including wait time, staff ratings, urgency alerts, and sentiment trends</h2>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.db{font-family:var(--font-sans);background:var(--color-background-tertiary)}
+.topbar{background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);padding:0 20px;height:50px;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--color-text-primary)}
+.logomark{width:24px;height:24px;background:#1D9E75;border-radius:6px;display:flex;align-items:center;justify-content:center}
+.topright{display:flex;align-items:center;gap:12px}
+.av{width:26px;height:26px;border-radius:50%;background:#E1F5EE;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;color:#085041}
+.layout{display:grid;grid-template-columns:180px 1fr}
+.sidebar{background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:12px 10px;display:flex;flex-direction:column;gap:1px;min-height:calc(100vh - 50px)}
+.ni{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--border-radius-md);font-size:12px;color:var(--color-text-secondary);cursor:pointer}
+.ni:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.ni.active{background:#E1F5EE;color:#0F6E56;font-weight:500}
+.ns{font-size:10px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.07em;padding:10px 8px 3px}
+.main{padding:20px;display:flex;flex-direction:column;gap:16px}
+.ph{display:flex;align-items:flex-start;justify-content:space-between}
+.pt{font-size:17px;font-weight:500;color:var(--color-text-primary)}
+.ps{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.pbtn{background:#1D9E75;color:#fff;border:none;padding:7px 13px;border-radius:var(--border-radius-md);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:5px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.mc{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:14px}
+.ml{font-size:11px;color:var(--color-text-secondary);margin-bottom:6px}
+.mv{font-size:24px;font-weight:500;color:var(--color-text-primary);line-height:1}
+.md{font-size:11px;margin-top:5px;display:flex;align-items:center;gap:3px}
+.up{color:#1D9E75}.dn{color:#E24B4A}
+.g2{display:grid;grid-template-columns:1fr 300px;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.card{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:16px}
+.ch{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.ct{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.sel{font-size:11px;padding:3px 7px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-secondary);color:var(--color-text-secondary);cursor:pointer}
+.cw{position:relative;width:100%;height:180px}
+.pill{display:inline-flex;align-items:center;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:500}
+.pp{background:#E1F5EE;color:#085041}
+.pn{background:#FCEBEB;color:#791F1F}
+.pnu{background:#F1EFE8;color:#5F5E5A}
+.pu{background:#FAEEDA;color:#633806}
+.pf{background:#E6F1FB;color:#0C447C}
+.pc{background:#E1F5EE;color:#085041}
+.ppr{background:#E6F1FB;color:#0C447C}
+.pfa{background:#FCEBEB;color:#791F1F}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px 80px;align-items:center;gap:6px;padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px}
+.row:last-child{border-bottom:none}
+.rh{color:var(--color-text-tertiary);font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;padding-bottom:6px}
+.mono{font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary)}
+.tbars{display:flex;flex-direction:column;gap:9px}
+.trow{display:flex;flex-direction:column;gap:3px}
+.tmeta{display:flex;justify-content:space-between;font-size:11px}
+.tn{color:var(--color-text-primary)}.tp{color:var(--color-text-secondary)}
+.track{height:5px;background:var(--color-background-secondary);border-radius:99px;overflow:hidden}
+.fill{height:100%;border-radius:99px}
+.alist{display:flex;flex-direction:column;gap:7px}
+.ai{display:flex;align-items:flex-start;gap:8px;padding:9px 11px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary)}
+.ai.urg{border-color:#F09595;background:#FCEBEB}
+.ai.fol{border-color:#85B7EB;background:#E6F1FB}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.du{background:#E24B4A}.df{background:#378ADD}
+.at{font-size:11px;color:var(--color-text-primary);line-height:1.45}
+.am{font-size:10px;color:var(--color-text-secondary);margin-top:2px}
+.locs{display:flex;flex-direction:column;gap:1px}
+.lrow{display:grid;grid-template-columns:minmax(0,1fr) 60px 60px 80px 70px;align-items:center;gap:6px;padding:9px 0;border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px}
+.lrow:last-child{border-bottom:none}
+.star{color:#EF9F27;font-size:12px}
+.bar-inline{display:flex;align-items:center;gap:6px;font-size:11px}
+.bi{height:4px;border-radius:99px;background:#1D9E75}
+.legend{display:flex;gap:14px;margin-bottom:10px;font-size:11px;color:var(--color-text-secondary)}
+.litem{display:flex;align-items:center;gap:4px}
+.lsq{width:9px;height:9px;border-radius:2px}
+.indrow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.indcard{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;cursor:pointer;border:0.5px solid transparent}
+.indcard.active{border-color:#1D9E75;background:#E1F5EE}
+.indt{font-size:11px;font-weight:500;color:var(--color-text-primary)}
+.inds{font-size:10px;color:var(--color-text-secondary);margin-top:2px}
+.indcard.active .indt{color:#085041}
+.indcard.active .inds{color:#0F6E56}
+</style>
+
+<div class="db">
+  <div class="topbar">
+    <div class="logo">
+      <div class="logomark">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1.5C6 1.5 2.5 4 2.5 7C2.5 8.7 4.1 10 6 10C7.9 10 9.5 8.7 9.5 7C9.5 4 6 1.5 6 1.5Z" fill="white" opacity=".9"/><circle cx="6" cy="7" r="1.3" fill="white" opacity=".5"/></svg>
+      </div>
+      Hearloop
+    </div>
+    <div class="topright">
+      <select class="sel" style="font-size:12px;padding:5px 10px;">
+        <option>Midas Auto Group</option>
+        <option>Jiffy Lube West</option>
+      </select>
+      <div class="av">JD</div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <div class="ns">Overview</div>
+      <div class="ni active">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.1"/><rect x="8" y="1" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.1"/><rect x="1" y="8" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.1"/><rect x="8" y="8" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.1"/></svg>
+        Dashboard
+      </div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1.5 10.5L4 7L6.5 8.5L9 4.5L12.5 6.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Analytics
+      </div>
+      <div class="ns">Locations</div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="6" r="2.5" stroke="currentColor" stroke-width="1.1"/><path d="M7 1.5C4.5 1.5 2.5 3.5 2.5 6C2.5 9 7 12.5 7 12.5C7 12.5 11.5 9 11.5 6C11.5 3.5 9.5 1.5 7 1.5Z" stroke="currentColor" stroke-width="1.1"/></svg>
+        All locations
+      </div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 11L5 7.5L7.5 9L10 5.5L12.5 7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 3H12" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        Compare
+      </div>
+      <div class="ns">Feedback</div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.1"/><path d="M5 7L6.5 8.5L9.5 5.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Sessions
+      </div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3.5H9M2 7H7M2 10.5H5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        Transcripts
+      </div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2V7.5L10 10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.1"/></svg>
+        Urgent
+        <span style="margin-left:auto;background:#FCEBEB;color:#791F1F;font-size:10px;padding:1px 6px;border-radius:99px;">28</span>
+      </div>
+      <div class="ns">Settings</div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="4.5" width="11" height="6" rx="1.2" stroke="currentColor" stroke-width="1.1"/><path d="M4.5 4.5V3.2C4.5 2.4 5.6 1.8 7 1.8C8.4 1.8 9.5 2.4 9.5 3.2V4.5" stroke="currentColor" stroke-width="1.1"/></svg>
+        API keys
+      </div>
+      <div class="ni">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4.5L7 7.5L12 4.5M2 4.5V9.5C2 10.1 2.4 10.5 3 10.5H11C11.6 10.5 12 10.1 12 9.5V4.5M2 4.5L7 1.5L12 4.5" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        Webhooks
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="ph">
+        <div>
+          <div class="pt">Service feedback — all locations</div>
+          <div class="ps">Midas Auto Group · 6 locations · Last 30 days</div>
+        </div>
+        <button class="pbtn">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1.5V9.5M1.5 5.5H9.5" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
+          New session
+        </button>
+      </div>
+
+      <div class="indrow">
+        <div class="indcard active" onclick="switchIndustry(this,'auto')">
+          <div class="indt">Automotive service</div>
+          <div class="inds">Oil change · repair · tire</div>
+        </div>
+        <div class="indcard" onclick="switchIndustry(this,'health')">
+          <div class="indt">Healthcare</div>
+          <div class="inds">Clinic · urgent care · dental</div>
+        </div>
+        <div class="indcard" onclick="switchIndustry(this,'hosp')">
+          <div class="indt">Hospitality</div>
+          <div class="inds">Restaurant · hotel · cafe</div>
+        </div>
+      </div>
+
+      <div class="metrics" id="metrics">
+        <div class="mc"><div class="ml">Voice sessions</div><div class="mv" id="m1">4,312</div><div class="md up"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 7.5V1.5M2 4L4.5 1.5L7 4" stroke="#1D9E75" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="m1d">+22% vs last month</span></div></div>
+        <div class="mc"><div class="ml" id="m2l">Avg wait rating</div><div class="mv" id="m2" style="color:#E24B4A;">2.1/5</div><div class="md dn"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 1.5V7.5M2 5L4.5 7.5L7 5" stroke="#E24B4A" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="m2d">-0.3pts vs last month</span></div></div>
+        <div class="mc"><div class="ml" id="m3l">Positive sentiment</div><div class="mv" id="m3" style="color:#1D9E75;">61%</div><div class="md up"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 7.5V1.5M2 4L4.5 1.5L7 4" stroke="#1D9E75" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="m3d">+4pts vs last month</span></div></div>
+        <div class="mc"><div class="ml">Urgent flags</div><div class="mv" id="m4" style="color:#E24B4A;">28</div><div class="md dn"><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M4.5 1.5V7.5M2 5L4.5 7.5L7 5" stroke="#E24B4A" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="m4d">+8 this week</span></div></div>
+      </div>
+
+      <div class="g2">
+        <div class="card">
+          <div class="ch">
+            <div class="ct" id="chartTitle">Daily voice feedback — all locations</div>
+            <select class="sel"><option>30 days</option><option>7 days</option><option>90 days</option></select>
+          </div>
+          <div class="legend">
+            <div class="litem"><div class="lsq" style="background:#1D9E75;"></div><span id="lg1">Positive</span></div>
+            <div class="litem"><div class="lsq" style="background:#E24B4A;"></div><span id="lg2">Negative</span></div>
+            <div class="litem"><div class="lsq" style="background:#888780;"></div><span id="lg3">Neutral</span></div>
+          </div>
+          <div class="cw"><canvas id="mainChart" role="img" aria-label="Stacked bar chart of daily feedback sentiment over 30 days">Daily feedback sessions by sentiment over 30 days.</canvas></div>
+        </div>
+
+        <div class="card">
+          <div class="ch"><div class="ct" id="topicTitle">Top complaint topics</div></div>
+          <div class="tbars" id="topicBars">
+            <div class="trow"><div class="tmeta"><span class="tn">Wait time</span><span class="tp">42%</span></div><div class="track"><div class="fill" style="width:42%;background:#E24B4A;"></div></div></div>
+            <div class="trow"><div class="tmeta"><span class="tn">Staff friendliness</span><span class="tp">23%</span></div><div class="track"><div class="fill" style="width:23%;background:#EF9F27;"></div></div></div>
+            <div class="trow"><div class="tmeta"><span class="tn">Service quality</span><span class="tp">18%</span></div><div class="track"><div class="fill" style="width:18%;background:#1D9E75;"></div></div></div>
+            <div class="trow"><div class="tmeta"><span class="tn">Price</span><span class="tp">11%</span></div><div class="track"><div class="fill" style="width:11%;background:#378ADD;"></div></div></div>
+            <div class="trow"><div class="tmeta"><span class="tn">Ease of booking</span><span class="tp">6%</span></div><div class="track"><div class="fill" style="width:6%;background:#888780;"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="g2">
+        <div class="card">
+          <div class="ch"><div class="ct">Location performance</div><select class="sel"><option>By sentiment</option><option>By volume</option></select></div>
+          <div class="locs">
+            <div class="lrow rh"><span>Location</span><span>Sessions</span><span>Positive</span><span>Avg wait</span><span>Urgency</span></div>
+            <div class="lrow"><span style="font-weight:500;font-size:12px;color:var(--color-text-primary);">North Ave</span><span style="color:var(--color-text-secondary);">847</span><span style="color:#1D9E75;font-weight:500;">74%</span><span><div class="bar-inline"><div class="bi" style="width:28px;"></div><span style="color:var(--color-text-secondary);">24m</span></div></span><span><div class="pill pnu">none</div></span></div>
+            <div class="lrow"><span style="font-weight:500;font-size:12px;color:var(--color-text-primary);">Westside</span><span style="color:var(--color-text-secondary);">731</span><span style="color:#E24B4A;font-weight:500;">48%</span><span><div class="bar-inline"><div class="bi" style="width:52px;background:#E24B4A;"></div><span style="color:var(--color-text-secondary);">51m</span></div></span><span><div class="pill pu">12 urgent</div></span></div>
+            <div class="lrow"><span style="font-weight:500;font-size:12px;color:var(--color-text-primary);">Downtown</span><span style="color:var(--color-text-secondary);">692</span><span style="color:#1D9E75;font-weight:500;">69%</span><span><div class="bar-inline"><div class="bi" style="width:34px;"></div><span style="color:var(--color-text-secondary);">31m</span></div></span><span><div class="pill pf">3 follow-up</div></span></div>
+            <div class="lrow"><span style="font-weight:500;font-size:12px;color:var(--color-text-primary);">Eastpark</span><span style="color:var(--color-text-secondary);">604</span><span style="color:#1D9E75;font-weight:500;">71%</span><span><div class="bar-inline"><div class="bi" style="width:30px;"></div><span style="color:var(--color-text-secondary);">27m</span></div></span><span><div class="pill pnu">none</div></span></div>
+            <div class="lrow"><span style="font-weight:500;font-size:12px;color:var(--color-text-primary);">Lakeside</span><span style="color:var(--color-text-secondary);">438</span><span style="color:#EF9F27;font-weight:500;">55%</span><span><div class="bar-inline"><div class="bi" style="width:44px;background:#EF9F27;"></div><span style="color:var(--color-text-secondary);">42m</span></div></span><span><div class="pill pu">8 urgent</div></span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ch"><div class="ct">Urgent alerts</div><span class="pill pu">28 open</span></div>
+          <div class="alist">
+            <div class="ai urg"><div class="dot du"></div><div><div class="at">"Waited 90 mins for oil change. Nobody told me it'd take that long."</div><div class="am">Westside · 8 min ago · wait_time</div></div></div>
+            <div class="ai urg"><div class="dot du"></div><div><div class="at">"Tech was rude when I asked about my bill. Never coming back."</div><div class="am">Westside · 22 min ago · staff_friendliness</div></div></div>
+            <div class="ai fol"><div class="dot df"></div><div><div class="at">"Charged $40 more than the coupon price, need someone to call me."</div><div class="am">Lakeside · 45 min ago · price</div></div></div>
+            <div class="ai fol"><div class="dot df"></div><div><div class="at">"Oil change done but they forgot to reset my dash indicator light."</div><div class="am">Downtown · 1 hr ago · service_quality</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ch"><div class="ct">Recent sessions</div><select class="sel"><option>All locations</option><option>Westside</option><option>North Ave</option></select></div>
+        <div class="row rh"><span>Session</span><span>Sentiment</span><span>Topic</span><span>Status</span></div>
+        <div class="row"><span class="mono">sess_9aX2...</span><span><div class="pill pp">positive</div></span><span style="font-size:11px;color:var(--color-text-secondary);">staff_friendliness</span><span><div class="pill pc">completed</div></span></div>
+        <div class="row"><span class="mono">sess_7bQ1...</span><span><div class="pill pn">negative</div></span><span style="font-size:11px;color:var(--color-text-secondary);">wait_time</span><span><div class="pill pc">completed</div></span></div>
+        <div class="row"><span class="mono">sess_3cR8...</span><span><div class="pill pnu">neutral</div></span><span style="font-size:11px;color:var(--color-text-secondary);">price</span><span><div class="pill ppr">processing</div></span></div>
+        <div class="row"><span class="mono">sess_1dM4...</span><span><div class="pill pp">positive</div></span><span style="font-size:11px;color:var(--color-text-secondary);">service_quality</span><span><div class="pill pc">completed</div></span></div>
+        <div class="row"><span class="mono">sess_5eK7...</span><span><div class="pill pn">negative</div></span><span style="font-size:11px;color:var(--color-text-secondary);">wait_time</span><span><div class="pill pfa">failed</div></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+const gc = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+const tc = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.38)';
+
+const labels = Array.from({length:30},(_,i)=>{
+  const d=new Date(); d.setDate(d.getDate()-29+i);
+  return i%6===0 ? d.toLocaleDateString('en',{month:'short',day:'numeric'}) : '';
+});
+
+const industries = {
+  auto: {
+    pos:[28,32,25,38,41,36,44,39,47,42,51,46,38,55,48,53,61,57,49,63,58,66,61,54,70,65,72,68,75,71],
+    neg:[18,22,19,15,20,17,22,18,25,21,19,24,20,18,22,26,20,18,24,21,19,22,18,20,17,21,19,23,20,18],
+    neu:[12,14,11,13,15,12,14,13,16,14,12,15,13,11,14,16,13,12,15,13,11,14,12,13,10,14,12,15,13,11],
+    m1:'4,312',m1d:'+22% vs last month',
+    m2:'2.1/5',m2c:'#E24B4A',m2d:'-0.3pts vs last month',m2dc:'dn',m2l:'Avg wait rating',
+    m3:'61%',m3d:'+4pts vs last month',m3l:'Positive sentiment',
+    m4:'28',m4d:'+8 this week',
+    chartTitle:'Daily voice feedback — all locations',
+    topicTitle:'Top complaint topics',
+    topics:[{n:'Wait time',p:42,c:'#E24B4A'},{n:'Staff friendliness',p:23,c:'#EF9F27'},{n:'Service quality',p:18,c:'#1D9E75'},{n:'Price',p:11,c:'#378ADD'},{n:'Ease of booking',p:6,c:'#888780'}]
+  },
+  health: {
+    pos:[22,26,20,30,33,28,36,31,39,34,43,38,30,47,40,45,53,49,41,55,50,58,53,46,62,57,64,60,67,63],
+    neg:[14,18,15,11,16,13,18,14,21,17,15,20,16,14,18,22,16,14,20,17,15,18,14,16,13,17,15,19,16,14],
+    neu:[9,11,8,10,12,9,11,10,13,11,9,12,10,8,11,13,10,9,12,10,8,11,9,10,7,11,9,12,10,8],
+    m1:'3,187',m1d:'+18% vs last month',
+    m2:'3.4/5',m2c:'#EF9F27',m2d:'+0.2pts vs last month',m2dc:'up',m2l:'Avg care rating',
+    m3:'67%',m3d:'+6pts vs last month',m3l:'Positive sentiment',
+    m4:'19',m4d:'+5 this week',
+    chartTitle:'Daily patient feedback — all clinics',
+    topicTitle:'Top patient concerns',
+    topics:[{n:'Wait time',p:38,c:'#E24B4A'},{n:'Communication',p:26,c:'#EF9F27'},{n:'Care quality',p:20,c:'#1D9E75'},{n:'Professionalism',p:11,c:'#378ADD'},{n:'Ease of booking',p:5,c:'#888780'}]
+  },
+  hosp: {
+    pos:[35,40,32,47,51,44,55,49,58,53,62,57,48,66,59,64,72,68,60,74,69,77,72,65,81,76,83,79,86,82],
+    neg:[12,16,13,9,14,11,16,12,19,15,13,18,14,12,16,20,14,12,18,15,13,16,12,14,11,15,13,17,14,12],
+    neu:[8,10,7,9,11,8,10,9,12,10,8,11,9,7,10,12,9,8,11,9,7,10,8,9,6,10,8,11,9,7],
+    m1:'5,841',m1d:'+31% vs last month',
+    m2:'4.1/5',m2c:'#1D9E75',m2d:'+0.4pts vs last month',m2dc:'up',m2l:'Avg food rating',
+    m3:'74%',m3d:'+7pts vs last month',m3l:'Positive sentiment',
+    m4:'14',m4d:'+3 this week',
+    chartTitle:'Daily guest feedback — all venues',
+    topicTitle:'Top guest mentions',
+    topics:[{n:'Food quality',p:35,c:'#1D9E75'},{n:'Wait time',p:28,c:'#E24B4A'},{n:'Staff friendliness',p:21,c:'#EF9F27'},{n:'Cleanliness',p:10,c:'#378ADD'},{n:'Price',p:6,c:'#888780'}]
+  }
+};
+
+let currentChart = null;
+
+function renderChart(ind) {
+  const d = industries[ind];
+  if(currentChart) currentChart.destroy();
+  currentChart = new Chart(document.getElementById('mainChart'),{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {label:'Positive',data:d.pos,backgroundColor:'#1D9E75',stack:'s'},
+        {label:'Negative',data:d.neg,backgroundColor:'#E24B4A',stack:'s'},
+        {label:'Neutral',data:d.neu,backgroundColor:'#888780',stack:'s'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},
+      scales:{
+        x:{stacked:true,grid:{display:false},ticks:{color:tc,font:{size:10}},border:{display:false}},
+        y:{stacked:true,grid:{color:gc},ticks:{color:tc,font:{size:10}},border:{display:false}}
+      }
+    }
+  });
+}
+
+function updateMetrics(ind) {
+  const d = industries[ind];
+  document.getElementById('m1').textContent = d.m1;
+  document.getElementById('m1d').textContent = d.m1d;
+  document.getElementById('m2').textContent = d.m2;
+  document.getElementById('m2').style.color = d.m2c;
+  document.getElementById('m2d').textContent = d.m2d;
+  document.getElementById('m2l').textContent = d.m2l;
+  document.getElementById('m3').textContent = d.m3;
+  document.getElementById('m3d').textContent = d.m3d;
+  document.getElementById('m3l').textContent = d.m3l;
+  document.getElementById('m4').textContent = d.m4;
+  document.getElementById('m4d').textContent = d.m4d;
+  document.getElementById('chartTitle').textContent = d.chartTitle;
+  document.getElementById('topicTitle').textContent = d.topicTitle;
+  const tb = document.getElementById('topicBars');
+  tb.innerHTML = d.topics.map(t=>`<div class="trow"><div class="tmeta"><span class="tn">${t.n}</span><span class="tp">${t.p}%</span></div><div class="track"><div class="fill" style="width:${t.p}%;background:${t.c};"></div></div></div>`).join('');
+}
+
+function switchIndustry(el, ind) {
+  document.querySelectorAll('.indcard').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderChart(ind);
+  updateMetrics(ind);
+}
+
+renderChart('auto');
+</script>

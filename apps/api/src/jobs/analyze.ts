@@ -68,6 +68,21 @@ async function markFailed(sessionId: string, reason: string): Promise<void> {
 }
 
 async function enqueueWebhookDelivery(sessionId: string): Promise<void> {
-  const { queue } = await import("../lib/queue");
-  await queue.add("deliver-webhook", { sessionId });
+  const { enqueueWebhook } = await import("../lib/queue");
+  
+  // Get partner_id for this session
+  const { db } = await import("../lib/db");
+  const session = await db
+    .selectFrom("sessions")
+    .select("partner_id")
+    .where("id", "=", sessionId)
+    .executeTakeFirst();
+
+  if (!session) return;
+
+  await enqueueWebhook({
+    sessionId,
+    eventType: "session.completed",
+    partnerId: session.partner_id,
+  });
 }

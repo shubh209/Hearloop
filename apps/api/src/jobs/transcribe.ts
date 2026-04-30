@@ -1,8 +1,9 @@
 // hearloop/apps/api/src/jobs/transcribe.ts
 
 import { transcribeAudio, TranscriptResult } from "../lib/groq";
-import { analyzeTranscript } from "../lib/claude";
 import { db } from "../lib/db";
+import { enqueueAnalyze } from "../lib/queue";
+import { randomUUID } from "crypto";
 
 export interface TranscribeJobPayload {
   sessionId: string;
@@ -17,35 +18,36 @@ export async function runTranscribeJob(
 ): Promise<void> {
   const { sessionId, storageKey, mimeType, languageHint, promptText } = payload;
 
-  // 1. Mark session as processing
   await db
     .updateTable("sessions")
-    .set({ status: "processing" })
+    .set({ status: "processing", updated_at: new Date() })
     .where("id", "=", sessionId)
     .execute();
 
   let transcript: TranscriptResult;
 
   try {
-    // 2. Fetch audio from storage
     const audioBuffer = await fetchAudioFromStorage(storageKey);
-
-    // 3. Transcribe
+    console.log("Audio fetched, size:", audioBuffer.byteLength);
     transcript = await transcribeAudio(audioBuffer, {
       mimeType,
       languageHint,
       promptText,
     });
-  } catch (err) {
+    console.log("Transcription done:", transcript.text.slice(0, 50));
+  } catch (err: any) {
+    console.error("Transcription error:", err.message);
     await markFailed(sessionId, "transcription_error");
     throw err;
   }
 
   try {
-    // 4. Store transcript in analyses table
+    console.log("Storing transcript for session:", sessionId);
+
     await db
       .insertInto("analyses")
       .values({
+        id: randomUUID(),
         session_id: sessionId,
         transcript: transcript.text,
         detected_language: transcript.detectedLanguage,
@@ -54,16 +56,29 @@ export async function runTranscribeJob(
         sentiment_score: null,
         topics_json: null,
         moderation_json: null,
+        created_at: new Date(),
+        updated_at: new Date(),
       })
+      .onConflict((oc) =>
+        oc.column("session_id").doUpdateSet({
+          transcript: transcript.text,
+          detected_language: transcript.detectedLanguage,
+          updated_at: new Date(),
+        })
+      )
       .execute();
 
-    // 5. Enqueue analyze job
-    await enqueueAnalyzeJob({
+    console.log("Transcript stored. Enqueuing analyze job for:", sessionId);
+
+    await enqueueAnalyze({
       sessionId,
       transcript: transcript.text,
       languageHint: transcript.detectedLanguage ?? languageHint,
     });
-  } catch (err) {
+
+    console.log("Analyze job enqueued for:", sessionId);
+  } catch (err: any) {
+    console.error("Post-transcription error:", err.message);
     await markFailed(sessionId, "post_transcription_error");
     throw err;
   }
@@ -72,23 +87,12 @@ export async function runTranscribeJob(
 async function markFailed(sessionId: string, reason: string): Promise<void> {
   await db
     .updateTable("sessions")
-    .set({ status: "failed", failure_reason: reason })
+    .set({ status: "failed", failure_reason: reason, updated_at: new Date() })
     .where("id", "=", sessionId)
     .execute();
 }
 
-// Placeholder — replace with real storage.ts call once built
 async function fetchAudioFromStorage(storageKey: string): Promise<Buffer> {
   const { getAudioBuffer } = await import("../lib/storage");
   return getAudioBuffer(storageKey);
-}
-
-// Placeholder — replace with real queue.ts call once built
-async function enqueueAnalyzeJob(payload: {
-  sessionId: string;
-  transcript: string;
-  languageHint?: string | null;
-}): Promise<void> {
-  const { queue } = await import("../lib/queue");
-  await queue.add("analyze", payload);
 }

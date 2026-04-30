@@ -4,12 +4,14 @@ import Fastify from "fastify";
 import { sessionRoutes } from "./routes/sessions";
 import { publicRoutes } from "./routes/public";
 import { db } from "./lib/db";
-import { queue, webhookQueue, createWorker } from "./lib/queue";
+import { webhookQueue, createWorker, analyzeQueue, expireQueue, transcribeQueue } from "./lib/queue";
 import { runValidateRecordingJob } from "./jobs/validate-recording";
 import { runTranscribeJob } from "./jobs/transcribe";
 import { runAnalyzeJob } from "./jobs/analyze";
 import { runDeliverWebhookJob } from "./jobs/deliver-webhook";
+import { runExpireSessionJob } from "./jobs/expire-session";
 import { Job } from "bullmq";
+import rateLimit from "@fastify/rate-limit";
 
 const app = Fastify({ logger: true });
 
@@ -19,7 +21,6 @@ app.decorate("authenticate", async (req: any, reply: any) => {
   if (!auth?.startsWith("Bearer ")) {
     return reply.code(401).send({ error: "missing_auth" });
   }
-
   const token = auth.slice(7);
   const { createHash } = await import("crypto");
   const keyHash = createHash("sha256").update(token).digest("hex");
@@ -42,11 +43,8 @@ app.decorate("authenticate", async (req: any, reply: any) => {
     .where("partners.status", "=", "active")
     .executeTakeFirst();
 
-  if (!apiKey) {
-    return reply.code(401).send({ error: "invalid_api_key" });
-  }
+  if (!apiKey) return reply.code(401).send({ error: "invalid_api_key" });
 
-  // Update last used
   await db
     .updateTable("api_keys")
     .set({ last_used_at: new Date() })
@@ -63,61 +61,41 @@ app.decorate("authenticate", async (req: any, reply: any) => {
 // --- CORS ---
 app.addHook("onRequest", async (req, reply) => {
   reply.header("Access-Control-Allow-Origin", "*");
-  reply.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization"
-  );
-  reply.header(
-    "Access-Control-Allow-Methods",
-    "GET, POST, DELETE, OPTIONS"
-  );
-  if (req.method === "OPTIONS") {
-    return reply.code(204).send();
-  }
+  reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  reply.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  if (req.method === "OPTIONS") return reply.code(204).send();
 });
-
-// --- Routes ---
-app.register(sessionRoutes, { prefix: "/v1" });
-app.register(publicRoutes, { prefix: "/v1" });
 
 // --- Health check ---
 app.get("/health", async () => ({ status: "ok", ts: new Date() }));
 
 // --- Workers ---
 function startWorkers() {
-  const transcribeWorker = createWorker(
-    "transcribe",
-    async (job: Job) => {
-      console.log("Processing transcribe job:", job.id, job.data);
-      await runTranscribeJob(job.data);
-    }
-  );
+  const transcribeWorker = createWorker("transcribe", async (job: Job) => {
+    console.log("Processing transcribe job:", job.id, job.data);
+    await runTranscribeJob(job.data);
+  });
 
-  const analyzeWorker = createWorker(
-    "analyze",
-    async (job: Job) => {
-      console.log("Processing analyze job:", job.id, job.data);
-      await runAnalyzeJob(job.data);
-    }
-  );
+  const analyzeWorker = createWorker("analyze", async (job: Job) => {
+    console.log("Processing analyze job:", job.id, job.data);
+    await runAnalyzeJob(job.data);
+  });
 
-  const validateWorker = createWorker(
-    "validate-recording",
-    async (job: Job) => {
-      console.log("Processing validate job:", job.id, job.data);
-      await runValidateRecordingJob(job.data);
-    }
-  );
+  const validateWorker = createWorker("validate-recording", async (job: Job) => {
+    console.log("Processing validate job:", job.id, job.data);
+    await runValidateRecordingJob(job.data);
+  });
 
-  const webhookWorker = createWorker(
-    "deliver-webhook",
-    async (job: Job) => {
-      console.log("Processing webhook job:", job.id, job.data);
-      await runDeliverWebhookJob(job.data);
-    }
-  );
+  const webhookWorker = createWorker("deliver-webhook", async (job: Job) => {
+    console.log("Processing webhook job:", job.id, job.data);
+    await runDeliverWebhookJob(job.data);
+  });
 
-  // Graceful shutdown
+  const expireWorker = createWorker("expire-session", async (job: Job) => {
+    console.log("Processing expire job:", job.id, job.data);
+    await runExpireSessionJob(job.data);
+  });
+
   const shutdown = async () => {
     app.log.info("Shutting down workers...");
     await Promise.all([
@@ -125,26 +103,50 @@ function startWorkers() {
       transcribeWorker.close(),
       analyzeWorker.close(),
       webhookWorker.close(),
-      queue.close(),
+      expireWorker.close(),
+      transcribeQueue.close(),
+      analyzeQueue.close(),
       webhookQueue.close(),
+      expireQueue.close(),
     ]);
     process.exit(0);
   };
 
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
-
   app.log.info("Workers started");
 }
 
 // --- Boot ---
 const start = async () => {
   try {
+    // 1. Rate limit FIRST
+    await app.register(rateLimit, {
+      max: 100,
+      timeWindow: "1 minute",
+      keyGenerator: (req: any) => {
+        const auth = req.headers["authorization"] ?? "";
+        const token = auth.replace("Bearer ", "");
+        return token.slice(0, 16) || req.ip;
+      },
+      errorResponseBuilder: () => ({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: "Rate limit exceeded. Max 100 requests per minute.",
+      }),
+    });
+
+    // 2. Routes AFTER rate limit
+    await app.register(sessionRoutes, { prefix: "/v1" });
+    await app.register(publicRoutes, { prefix: "/v1" });
+
+    // 3. Listen
     await app.listen({
       port: Number(process.env.PORT ?? 3001),
       host: "0.0.0.0",
     });
 
+    // 4. Workers
     startWorkers();
     app.log.info(`Hearloop API running on port ${process.env.PORT ?? 3001}`);
   } catch (err) {
