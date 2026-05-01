@@ -3,4 +3,5 @@
 /.env
 /claude.md
 /.ssh/*
-/.env.example
+/.env.examplenode_modules/
+*.html
