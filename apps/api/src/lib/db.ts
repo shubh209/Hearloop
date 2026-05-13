@@ -23,6 +23,8 @@ export interface SessionsTable {
   max_duration_sec: number;
   metadata_json: string | null;
   expires_at: Date;
+  processing_started_at: Date | null;
+  processing_completed_at: Date | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -48,6 +50,9 @@ export interface AnalysesTable {
   sentiment_score: number | null;
   topics_json: string | null;
   moderation_json: string | null;
+  model_used: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -55,20 +60,24 @@ export interface AnalysesTable {
 export interface ApiKeysTable {
   id: Generated<string>;
   partner_id: string;
+  key_prefix: string;
   key_hash: string;
   revoked_at: Date | null;
   last_used_at: Date | null;
   created_at: Generated<Date>;
 }
 
+
 export interface PartnersTable {
-  id: Generated<string>;
+  id: string;
   name: string;
-  status: Generated<"active" | "suspended">;
+  email: string | null;
+  password_hash: string | null;  // ADD THIS
+  status: "active" | "suspended";
   webhook_url: string | null;
   allowed_origins: string | null;
   default_config_json: string | null;
-  created_at: Generated<Date>;
+  created_at: Date;
 }
 
 export interface WebhookDeliveriesTable {

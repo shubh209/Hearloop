@@ -8,6 +8,7 @@ export const connection = new IORedis(process.env.REDIS_URL!, {
 });
 
 // Dedicated queue per job type — no shared queue confusion
+export const validateQueue = new Queue("hearloop-validate", { connection });
 export const transcribeQueue = new Queue("hearloop-transcribe", { connection });
 export const analyzeQueue = new Queue("hearloop-analyze", { connection });
 export const webhookQueue = new Queue("hearloop-webhooks", { connection });
@@ -59,6 +60,23 @@ export function createWorker(
   });
 
   return worker;
+}
+
+export async function enqueueValidate(payload: {
+  sessionId: string;
+  storageKey: string;
+  mimeType: string;
+  languageHint?: string;
+  promptText?: string;
+  maxDurationSec?: number;
+}): Promise<void> {
+  await validateQueue.add("validate-recording", payload, {
+    jobId: `validate-${payload.sessionId}`,
+    attempts: 2,
+    backoff: { type: "exponential", delay: 1000 },
+    removeOnComplete: { count: 100 },
+    removeOnFail: { count: 500 },
+  });
 }
 
 export async function enqueueTranscribe(payload: {

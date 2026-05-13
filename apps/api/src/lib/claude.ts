@@ -1,5 +1,3 @@
-// hearloop/apps/api/src/lib/claude.ts
-
 import {
   BedrockRuntimeClient,
   InvokeModelCommand,
@@ -13,12 +11,12 @@ const client = new BedrockRuntimeClient({
   },
 });
 
-// Model IDs
-// Replace model IDs with cross-region inference profile IDs
 const NOVA_LITE = "us.amazon.nova-lite-v1:0";
 const HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
-// Fixed taxonomy from spec §11
+// 5-second feedback clips — 800 chars covers all realistic transcripts
+const MAX_TRANSCRIPT_CHARS = 800;
+
 export const VALID_TOPICS = [
   "staff_friendliness",
   "wait_time",
@@ -45,9 +43,10 @@ export interface AnalysisResult {
   qualityFlags: string[];
   moderationFlags: string[];
   modelUsed?: string;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
-// Optimized system prompt — ~150 tokens vs original ~300
 const SYSTEM_PROMPT = `You are a feedback classifier. Return ONLY a JSON object, no markdown, no explanation.
 
 Schema:
@@ -63,8 +62,13 @@ Schema:
 
 Rules: topics only from allowed list. urgency=urgent means safety/strong anger. urgency=follow_up means complaint. Empty transcript = qualityFlags:["inaudible"].`;
 
-// --- Nova Lite invocation ---
-async function invokeNovaLite(transcript: string): Promise<string> {
+interface ModelResponse {
+  text: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+async function invokeNovaLite(transcript: string): Promise<ModelResponse> {
   const userContent = transcript.trim()
     ? `Classify this feedback transcript: "${transcript.trim()}"`
     : `Classify this feedback transcript: [empty]`;
@@ -73,8 +77,8 @@ async function invokeNovaLite(transcript: string): Promise<string> {
     messages: [{ role: "user", content: [{ text: userContent }] }],
     system: [{ text: SYSTEM_PROMPT }],
     inferenceConfig: {
-      max_new_tokens: 250, // Optimized — JSON output ~150 tokens
-      temperature: 0.0,    // Deterministic output
+      maxTokens: 120,
+      temperature: 0.0,
     },
   };
 
@@ -87,18 +91,22 @@ async function invokeNovaLite(transcript: string): Promise<string> {
 
   const response = await client.send(command);
   const body = JSON.parse(new TextDecoder().decode(response.body));
-  return body.output?.message?.content?.[0]?.text ?? "";
+
+  return {
+    text: body.output?.message?.content?.[0]?.text ?? "",
+    inputTokens: body.usage?.inputTokens,
+    outputTokens: body.usage?.outputTokens,
+  };
 }
 
-// --- Haiku fallback invocation ---
-async function invokeHaiku(transcript: string): Promise<string> {
+async function invokeHaiku(transcript: string): Promise<ModelResponse> {
   const userContent = transcript.trim()
     ? `Classify this feedback transcript: "${transcript.trim()}"`
     : `Classify this feedback transcript: [empty]`;
 
   const requestBody = {
     anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 250,
+    max_tokens: 120,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],
   };
@@ -112,46 +120,49 @@ async function invokeHaiku(transcript: string): Promise<string> {
 
   const response = await client.send(command);
   const body = JSON.parse(new TextDecoder().decode(response.body));
-  return body.content
-    .filter((b: any) => b.type === "text")
-    .map((b: any) => b.text)
-    .join("");
+
+  return {
+    text: body.content
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text)
+      .join(""),
+    inputTokens: body.usage?.input_tokens,
+    outputTokens: body.usage?.output_tokens,
+  };
 }
 
-// --- Main export ---
 export async function analyzeTranscript(
   transcript: string,
   options: { languageHint?: string } = {}
 ): Promise<AnalysisResult> {
+  // Guard: skip LLM for empty/trivially short transcripts
+  const safeTranscript = transcript.trim().slice(0, MAX_TRANSCRIPT_CHARS);
+  if (safeTranscript.split(/\s+/).filter(Boolean).length < 2) {
+    return { ...fallbackAnalysis("too_short"), modelUsed: "none" };
+  }
 
-  // Try Nova Lite first
   try {
-    const raw = await invokeNovaLite(transcript);
-    const result = parseAnalysis(raw);
+    const { text, inputTokens, outputTokens } = await invokeNovaLite(safeTranscript);
+    const result = parseAnalysis(text);
 
-    // If parse succeeded return with model tag
     if (!result.qualityFlags.includes("parse_error")) {
-      return { ...result, modelUsed: "nova-lite" };
+      return { ...result, modelUsed: "nova-lite", inputTokens, outputTokens };
     }
 
-    // Parse failed — fall through to Haiku
     console.warn("Nova Lite returned invalid JSON — falling back to Haiku");
   } catch (err: any) {
     console.warn("Nova Lite failed:", err.message, "— falling back to Haiku");
   }
 
-  // Haiku fallback
   try {
-    const raw = await invokeHaiku(transcript);
-    const result = parseAnalysis(raw);
-    return { ...result, modelUsed: "haiku-fallback" };
+    const { text, inputTokens, outputTokens } = await invokeHaiku(safeTranscript);
+    const result = parseAnalysis(text);
+    return { ...result, modelUsed: "haiku-fallback", inputTokens, outputTokens };
   } catch (err: any) {
     console.error("Haiku fallback also failed:", err.message);
     return { ...fallbackAnalysis("model_error"), modelUsed: "none" };
   }
 }
-
-// --- helpers ---
 
 function parseAnalysis(raw: string): AnalysisResult {
   const cleaned = raw.replace(/```json|```/g, "").trim();

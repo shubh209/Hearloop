@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-// ── Mock data ──────────────────────────────────────────────
+// ── Mock data (fallback) ───────────────────────────────────
 const MOCK_SESSIONS = [
   { id: "sess_9aX2kL", sentiment: "positive", topic: "staff_friendliness", urgency: "none", status: "completed", ts: "2m ago", score: 0.82, transcript: "Staff was incredibly helpful and friendly, will definitely come back." },
   { id: "sess_7bQ1mP", sentiment: "negative", topic: "wait_time", urgency: "urgent", status: "completed", ts: "14m ago", score: 0.78, transcript: "Waited over an hour for an oil change. Completely unacceptable." },
@@ -15,7 +15,7 @@ const MOCK_SESSIONS = [
   { id: "sess_8gH3rU", sentiment: "neutral", topic: "cleanliness", urgency: "none", status: "processing", ts: "2h ago", score: 0.5, transcript: "" },
 ];
 
-const TOPIC_DATA = [
+const MOCK_TOPICS = [
   { name: "Wait time", pct: 38, color: "#E24B4A" },
   { name: "Staff friendliness", pct: 24, color: "#EF9F27" },
   { name: "Service quality", pct: 19, color: "#1D9E75" },
@@ -31,7 +31,6 @@ const LOCATIONS = [
   { name: "Lakeside", sessions: 438, positive: 55, waitMin: 42, urgency: 8, color: "#EF9F27" },
 ];
 
-// ── Types ──────────────────────────────────────────────────
 type NavItem = "dashboard" | "sessions" | "analytics" | "alerts" | "apikeys" | "webhooks";
 
 export default function DashboardPage() {
@@ -40,26 +39,65 @@ export default function DashboardPage() {
   const [search, setSearch] = useState("");
   const [sessionFilter, setSessionFilter] = useState<"all" | "completed" | "urgent">("all");
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
-  const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [realData, setRealData] = useState<any>(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [partnerName, setPartnerName] = useState("Partner");
 
   useEffect(() => {
-    // Redirect if no session
     const s = localStorage.getItem("hl_session");
-    if (!s) router.push("/login");
+    if (!s) { router.push("/login"); return; }
+
+    const session = JSON.parse(s);
+    if (session.name) setPartnerName(session.name);
+
+    if (!session.partnerId || !session.apiKey) {
+      setDataLoading(false);
+      return;
+    }
+
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/partners/${session.partnerId}/dashboard`, {
+      headers: { "Authorization": `Bearer ${session.apiKey}` }
+    })
+      .then(r => r.json())
+      .then(data => { setRealData(data); setDataLoading(false); })
+      .catch(() => setDataLoading(false));
   }, [router]);
 
-  const filteredSessions = MOCK_SESSIONS.filter((s) => {
+  // ── Derived data — real or mock ──
+  const sessions = realData?.sessions?.length > 0 ? realData.sessions : MOCK_SESSIONS;
+
+  const stats = realData?.stats;
+  const metrics = [
+    { label: "Voice sessions", val: stats ? stats.total.toString() : "4,312", delta: "all time", up: true },
+    { label: "Positive sentiment", val: stats ? `${stats.sentiment.positiveRate}%` : "61%", delta: "of completed", up: true, color: "var(--green)" },
+    { label: "Urgent flags", val: stats ? stats.urgent.toString() : "28", delta: "need attention", up: false, color: "var(--red)" },
+    { label: "Completion rate", val: stats ? `${stats.completionRate}%` : "94%", delta: "submitted vs created", up: true },
+  ];
+
+  const topicData = realData?.topics?.length > 0
+    ? realData.topics.slice(0, 5).map((t: any, i: number) => ({
+        name: t.name.replace(/_/g, " "),
+        pct: t.pct,
+        color: ["#E24B4A","#EF9F27","#1D9E75","#378ADD","#888"][i] ?? "#888",
+      }))
+    : MOCK_TOPICS;
+
+  const urgentSessions = sessions.filter((s: any) =>
+    s.urgency === "urgent" || s.urgency === "follow_up"
+  );
+
+  const filteredSessions = sessions.filter((s: any) => {
     if (sessionFilter === "completed" && s.status !== "completed") return false;
     if (sessionFilter === "urgent" && s.urgency !== "urgent") return false;
-    if (search && !s.id.includes(search) && !s.topic.includes(search)) return false;
+    if (search && !s.id.includes(search) && !(s.topic ?? s.topics?.[0] ?? "").includes(search)) return false;
     return true;
   });
 
-  const urgentSessions = MOCK_SESSIONS.filter((s) => s.urgency === "urgent" || s.urgency === "follow_up");
-
   const copyKey = () => {
-    navigator.clipboard.writeText("sk-live_••••••••3HO");
+    const s = localStorage.getItem("hl_session");
+    const key = s ? JSON.parse(s).apiKey ?? "sk-live_••••••••" : "sk-live_••••••••";
+    navigator.clipboard.writeText(key);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -562,7 +600,8 @@ export default function DashboardPage() {
             <div className="user-row">
               <div className="av">AC</div>
               <div>
-                <div className="user-name">Acme Motors</div>
+              // In sidebar user row:
+              <div className="user-name">{partnerName}</div>
                 <div className="user-role">Partner account</div>
               </div>
             </div>
@@ -664,7 +703,7 @@ export default function DashboardPage() {
                     <div className="card">
                       <div className="ch"><div className="ct">Top topics</div></div>
                       <div className="tbars">
-                        {TOPIC_DATA.map((t) => (
+                        {topicData.map((t: any) => (
                           <div key={t.name} className="trow">
                             <div className="tmeta"><span className="tn">{t.name}</span><span className="tp">{t.pct}%</span></div>
                             <div className="track"><div className="fill" style={{width:`${t.pct}%`,background:t.color}} /></div>
@@ -751,7 +790,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredSessions.map((s) => (
+                    {filteredSessions.map((s: any) => (
                       <>
                         <tr key={s.id} className="sess-row" onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)}>
                           <td><span className="sess-id">{s.id}</span></td>
@@ -784,7 +823,7 @@ export default function DashboardPage() {
                   <span className="pill pu">{urgentSessions.length} open</span>
                 </div>
                 <div className="alist">
-                  {urgentSessions.map((s) => (
+                  {urgentSessions.map((s: any) => (
                     <div key={s.id} className={`ai ${s.urgency === "urgent" ? "urg" : "fol"}`}>
                       <div className={`adot ${s.urgency === "urgent" ? "du" : "df"}`} />
                       <div>
@@ -882,7 +921,7 @@ export default function DashboardPage() {
                 <div className="card">
                   <div className="ch"><div className="ct">Topic distribution</div></div>
                   <div className="tbars" style={{marginTop:8}}>
-                    {TOPIC_DATA.map((t) => (
+                    {topicData.map((t: any) => (
                       <div key={t.name} className="trow">
                         <div className="tmeta"><span className="tn">{t.name}</span><span className="tp">{t.pct}%</span></div>
                         <div className="track"><div className="fill" style={{width:`${t.pct}%`,background:t.color}} /></div>

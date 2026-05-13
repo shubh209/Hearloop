@@ -20,7 +20,7 @@ export async function runTranscribeJob(
 
   await db
     .updateTable("sessions")
-    .set({ status: "processing", updated_at: new Date() })
+    .set({ status: "processing", processing_started_at: new Date(), updated_at: new Date() })
     .where("id", "=", sessionId)
     .execute();
 

@@ -1,18 +1,50 @@
-name: Docker Image CI
+name: Deploy to EC2
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-
-  build:
-
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        run: |
+          docker build --platform linux/amd64 \
+            -f apps/api/Dockerfile \
+            -t 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest \
+            .
+          docker push 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 18.223.189.193
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region us-east-2 | \
+              docker login --username AWS --password-stdin \
+              652892608187.dkr.ecr.us-east-2.amazonaws.com
+            docker pull 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
+            docker stop hearloop-api || true
+            docker rm hearloop-api || true
+            docker run -d \
+              --name hearloop-api \
+              --env-file /home/ec2-user/.env \
+              -p 3001:3001 \
+              --restart unless-stopped \
+              652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest

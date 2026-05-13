@@ -12,6 +12,7 @@ import { runDeliverWebhookJob } from "./jobs/deliver-webhook";
 import { runExpireSessionJob } from "./jobs/expire-session";
 import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
+import { partnerRoutes } from "./routes/partners";
 
 const app = Fastify({ logger: true });
 
@@ -130,26 +131,27 @@ const start = async () => {
         return token.slice(0, 16) || req.ip;
       },
       errorResponseBuilder: () => ({
-        statusCode: 429,
-        error: "Too Many Requests",
-        message: "Rate limit exceeded. Max 100 requests per minute.",
-      }),
+          statusCode: 429,
+          error: "Too Many Requests",
+          message: "Rate limit exceeded. Max 100 requests per minute.",
+        }),
     });
 
-    // 2. Routes AFTER rate limit
-    await app.register(sessionRoutes, { prefix: "/v1" });
-    await app.register(publicRoutes, { prefix: "/v1" });
+   // 2. Routes AFTER rate limit
+      await app.register(sessionRoutes, { prefix: "/v1" });
+      await app.register(publicRoutes, { prefix: "/v1" });
+      await app.register(partnerRoutes, { prefix: "/v1" }); // ADD THIS
 
-    // 3. Listen
-    await app.listen({
-      port: Number(process.env.PORT ?? 3001),
-      host: "0.0.0.0",
-    });
+      // 3. Listen
+      await app.listen({
+        port: Number(process.env.PORT ?? 3001),
+        host: "0.0.0.0",
+      });
 
     // 4. Workers
     startWorkers();
-    app.log.info(`Hearloop API running on port ${process.env.PORT ?? 3001}`);
-  } catch (err) {
+      app.log.info(`Hearloop API running on port ${process.env.PORT ?? 3001}`);
+    } catch (err) {
     app.log.error(err);
     process.exit(1);
   }

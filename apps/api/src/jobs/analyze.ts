@@ -40,14 +40,17 @@ export async function runAnalyzeJob(
           moderationFlags: analysis.moderationFlags,
           summary: analysis.summary,
         }),
+        model_used: analysis.modelUsed ?? null,
+        input_tokens: analysis.inputTokens ?? null,
+        output_tokens: analysis.outputTokens ?? null,
       })
       .where("session_id", "=", sessionId)
       .execute();
 
-    // 3. Mark session completed
+    // 3. Mark session completed and record completion time for latency tracking
     await db
       .updateTable("sessions")
-      .set({ status: "completed" })
+      .set({ status: "completed", processing_completed_at: new Date() })
       .where("id", "=", sessionId)
       .execute();
 

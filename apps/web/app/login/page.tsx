@@ -11,23 +11,67 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [company, setCompany] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-
-    // Placeholder auth — wire to real backend later
-    await new Promise((r) => setTimeout(r, 900));
-
-    if (email && password.length >= 6) {
-      // Store mock session
-      localStorage.setItem("hl_session", JSON.stringify({ email, ts: Date.now() }));
-      router.push("/dashboard");
-    } else {
-      setError(password.length < 6 ? "Password must be at least 6 characters." : "Please enter a valid email.");
+  
+    try {
+      const endpoint = mode === "login"
+        ? `${process.env.NEXT_PUBLIC_API_URL}/partners/login`
+        : `${process.env.NEXT_PUBLIC_API_URL}/partners/register`;
+  
+      const body = mode === "login"
+        ? { email, password }
+        : { name: company, email, password };
+  
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+  
+      const data = await res.json();
+  
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong.");
+        setLoading(false);
+        return;
+      }
+  
+      // Store session
+      localStorage.setItem("hl_session", JSON.stringify({
+        partnerId: data.partnerId,
+        name: data.name,
+        keyPrefix: data.keyPrefix ?? data.apiKey?.slice(0, 12),
+        apiKey: data.apiKey ?? null, // only present on signup
+      }));
+  
+      if (mode === "signup" && data.apiKey) {
+        localStorage.setItem("hl_session", JSON.stringify({
+          partnerId: data.partnerId,
+          name: data.name,
+          apiKey: data.apiKey,
+        }));
+        router.push("/dashboard");
+      } else {
+        // Login — ask for API key if not stored
+        const existing = localStorage.getItem("hl_session");
+        const existingParsed = existing ? JSON.parse(existing) : null;
+        
+        localStorage.setItem("hl_session", JSON.stringify({
+          partnerId: data.partnerId,
+          name: data.name,
+          apiKey: existingParsed?.apiKey ?? null, // keep existing key if present
+        }));
+        router.push("/dashboard");
+      }
+    } catch {
+      setError("Network error. Please try again.");
     }
-
+  
     setLoading(false);
   };
 
@@ -399,13 +443,15 @@ export default function LoginPage() {
             </div>
 
             <form className="form" onSubmit={handleSubmit}>
-              {mode === "signup" && (
+            {mode === "signup" && (
                 <div className="field">
                   <label className="label">Company name</label>
                   <input
                     className="input"
                     type="text"
                     placeholder="Acme Motors"
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
                     required
                   />
                 </div>
@@ -466,13 +512,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {mode === "signup" && (
-              <p className="terms">
-                By creating an account you agree to our{" "}
-                <a href="#">Terms of Service</a> and{" "}
-                <a href="#">Privacy Policy</a>.
-              </p>
-            )}
+            
           </div>
         </div>
       </div>

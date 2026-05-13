@@ -3,7 +3,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { db } from "../lib/db";
 import { getUploadSignedUrl, deleteAudio } from "../lib/storage";
-import { enqueueTranscribe, enqueueExpireSession } from "../lib/queue";
+import { enqueueValidate, enqueueExpireSession } from "../lib/queue";
 import { randomUUID } from "crypto";
 
 export async function sessionRoutes(app: FastifyInstance) {
@@ -270,13 +270,14 @@ export async function sessionRoutes(app: FastifyInstance) {
         .where("id", "=", id)
         .execute();
 
-      // Kick off processing pipeline
-      await enqueueTranscribe({
+      // Kick off processing pipeline via validation first
+      await enqueueValidate({
         sessionId: id,
         storageKey: body.storageKey,
         mimeType: body.mimeType,
         languageHint: body.languageHint,
         promptText: body.promptText,
+        maxDurationSec: session.max_duration_sec,
       });
 
       return reply.send({ sessionId: id, status: "submitted" });
