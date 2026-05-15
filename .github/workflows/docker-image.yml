@@ -35,6 +35,7 @@ jobs:
           host: 18.223.189.193
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY
           script: |
             aws ecr get-login-password --region us-east-2 | \
               docker login --username AWS --password-stdin \
@@ -48,3 +49,12 @@ jobs:
               -p 3001:3001 \
               --restart unless-stopped \
               652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
+
+      - name: Health check
+        run: |
+          echo "Waiting 15s for container to start..."
+          sleep 15
+          curl --fail --retry 3 --retry-delay 5 \
+            http://18.223.189.193:3001/health \
+            && echo "Health check passed" \
+            || (echo "Health check FAILED" && exit 1)
