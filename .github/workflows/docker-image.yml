@@ -18,6 +18,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
+      - name: Allow runner IP on port 22
+        run: |
+          RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+          echo "Runner IP: $RUNNER_IP"
+          echo "RUNNER_IP=$RUNNER_IP" >> $GITHUB_ENV
+          aws ec2 authorize-security-group-ingress \
+            --region us-east-2 \
+            --group-id sg-0fdee87e11e224206 \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_IP/32" \
+            --tag-specifications "ResourceType=security-group-rule,Tags=[{Key=Name,Value=github-actions-temp}]"
+
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
@@ -58,3 +71,13 @@ jobs:
             http://18.223.189.193:3001/health \
             && echo "Health check passed" \
             || (echo "Health check FAILED" && exit 1)
+
+      - name: Revoke runner IP from port 22
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --region us-east-2 \
+            --group-id sg-0fdee87e11e224206 \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_IP/32" || true
