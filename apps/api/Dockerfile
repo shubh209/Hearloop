@@ -7,7 +7,6 @@ FROM base AS deps
 COPY package*.json ./
 COPY apps/api/package*.json ./apps/api/
 COPY packages/db/package*.json ./packages/db/
-COPY packages/types/package*.json ./packages/types/
 RUN npm install
 
 FROM base AS builder
