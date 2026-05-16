@@ -60,12 +60,17 @@ export default function DashboardPage() {
       return;
     }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/partners/${session.partnerId}/dashboard`, {
-      headers: { "Authorization": `Bearer ${session.apiKey}` }
-    })
-      .then(r => r.json())
-      .then(data => { setRealData(data); setDataLoading(false); })
-      .catch(() => setDataLoading(false));
+    const fetchDashboard = () =>
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/partners/${session.partnerId}/dashboard`, {
+        headers: { "Authorization": `Bearer ${session.apiKey}` }
+      })
+        .then(r => r.json())
+        .then(data => { setRealData(data); setDataLoading(false); })
+        .catch(() => setDataLoading(false));
+
+    fetchDashboard();
+    const interval = setInterval(fetchDashboard, 30_000);
+    return () => clearInterval(interval);
   }, [router]);
 
   const handleSaveKey = async () => {

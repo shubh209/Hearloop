@@ -7,6 +7,42 @@ import { randomUUID } from "crypto";
 const MAX_ATTEMPTS = 7;
 const WEBHOOK_TIMEOUT_MS = 10000; // 10s
 
+// Private/loopback CIDR ranges that must never receive webhooks
+const BLOCKED_HOSTNAME_RE =
+  /^(localhost|.*\.local)$/i;
+
+const BLOCKED_IP_RE = new RegExp(
+  [
+    "^127\\.",                        // 127.0.0.0/8 loopback
+    "^10\\.",                         // 10.0.0.0/8
+    "^192\\.168\\.",                  // 192.168.0.0/16
+    "^172\\.(1[6-9]|2[0-9]|3[01])\\.", // 172.16.0.0/12
+    "^169\\.254\\.",                  // 169.254.0.0/16 link-local (AWS metadata)
+    "^::1$",                          // IPv6 loopback
+    "^fc",                            // IPv6 unique local fc00::/7
+    "^fd",
+  ].join("|")
+);
+
+function assertSafeWebhookUrl(rawUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`SSRF_BLOCKED: invalid URL — ${rawUrl}`);
+  }
+
+  if (parsed.protocol !== "https:") {
+    throw new Error(`SSRF_BLOCKED: only HTTPS webhook URLs are allowed (got ${parsed.protocol})`);
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  if (BLOCKED_HOSTNAME_RE.test(hostname) || BLOCKED_IP_RE.test(hostname)) {
+    throw new Error(`SSRF_BLOCKED: webhook URL targets a private/reserved address — ${hostname}`);
+  }
+}
+
 export interface WebhookJobPayload {
   sessionId: string;
   eventType: string;
@@ -29,6 +65,9 @@ export async function runDeliverWebhookJob(
     // No webhook configured — skip silently
     return;
   }
+
+  // SSRF guard — throws and marks job failed if URL is private/non-HTTPS
+  assertSafeWebhookUrl(partner.webhook_url);
 
   // 2. Build event payload
   const eventId = randomUUID();

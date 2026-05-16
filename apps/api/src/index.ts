@@ -1,5 +1,8 @@
 // hearloop/apps/api/src/index.ts
 
+import { validateEnv } from "./lib/env";
+validateEnv();
+
 import Fastify from "fastify";
 import { sessionRoutes } from "./routes/sessions";
 import { publicRoutes } from "./routes/public";
