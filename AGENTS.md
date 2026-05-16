@@ -185,3 +185,4 @@ POST   /public/session/:token/finalize    public
 | `context/BACKLOG.md` | Planning what to work on next |
 | `context/INFRA.md` | Deploying, SSH, env vars, AWS resources |
 | `context/DECISIONS.md` | Questioning a tech choice |
+| `context/METRICS.md` | Before/after measurements for every feature (resume-ready numbers) |
