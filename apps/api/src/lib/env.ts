@@ -4,19 +4,21 @@
 // rather than silently misbehaving at runtime.
 
 const REQUIRED: Record<string, string> = {
-  DATABASE_URL:              "PostgreSQL connection string (RDS)",
-  REDIS_URL:                 "ElastiCache Valkey connection string",
-  AWS_REGION:                "AWS region (e.g. us-east-2)",
+  DATABASE_URL:              "PostgreSQL connection string",
+  REDIS_URL:                 "Redis connection string (Upstash or ElastiCache)",
   BEDROCK_REGION:            "Bedrock region (e.g. us-east-2)",
-  S3_BUCKET:                 "S3 bucket name for audio files",
   GROQ_API_KEY:              "Groq API key for Whisper transcription",
   WEBHOOK_SIGNING_SECRET:    "HMAC secret for signing webhook payloads",
+  STORAGE_REGION:            "S3/R2 storage region",
+  STORAGE_BUCKET:            "S3/R2 bucket name for audio files",
+  STORAGE_ACCESS_KEY_ID:     "S3/R2 access key ID",
+  STORAGE_SECRET_ACCESS_KEY: "S3/R2 secret access key",
 };
 
-// These are needed but may use aliased names on EC2
+// Bedrock credentials may share the same key as storage or have their own
 const ALIASED: Array<[string[], string]> = [
-  [["AWS_ACCESS_KEY_ID", "BEDROCK_ACCESS_KEY_ID", "STORAGE_ACCESS_KEY_ID"], "AWS access key ID"],
-  [["AWS_SECRET_ACCESS_KEY", "BEDROCK_SECRET_ACCESS_KEY", "STORAGE_SECRET_ACCESS_KEY"], "AWS secret access key"],
+  [["BEDROCK_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID", "STORAGE_ACCESS_KEY_ID"], "Bedrock access key ID"],
+  [["BEDROCK_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY", "STORAGE_SECRET_ACCESS_KEY"], "Bedrock secret access key"],
 ];
 
 export function validateEnv(): void {
