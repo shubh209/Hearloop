@@ -2,6 +2,8 @@
 
 > Contains live IPs and deployment commands. Do not commit secrets here.
 
+Last updated: May 16, 2026
+
 ---
 
 ## Live Endpoints
@@ -17,13 +19,25 @@
 
 ## AWS Resources (us-east-2)
 
-| Resource | Type | Details |
+| Resource | Type | Details | Cost |
+|---|---|---|---|
+| EC2 | t3.micro | Elastic IP: 18.223.189.193 — API container on port 3001 | ~$8/mo |
+| EBS | 20 GB gp3 | EC2 root volume | ~$1.60/mo |
+| S3 | `hearloop-audio-prod` | Private bucket, CORS enabled for presigned PUT uploads | ~$0.002/mo |
+| ECR | `hearloop-api` | Docker image repository, lifecycle policy active | $0 free tier |
+
+**Deleted (May 16, 2026):** RDS t3.micro, ElastiCache Valkey t3.micro, CloudWatch RDSOSMetrics log group
+
+---
+
+## External Services (Free Tier)
+
+| Service | Purpose | Connection |
 |---|---|---|
-| EC2 | t3.micro | Elastic IP: 18.223.189.193 — API container on port 3001 |
-| RDS | PostgreSQL 16, db.t3.micro | Private subnet. No `sslmode` in connection string. |
-| ElastiCache | Valkey 7.2, cache.t3.micro | Private subnet. Set `maxmemory-policy noeviction`. |
-| S3 | `hearloop-audio-prod` | Private bucket, CORS enabled for presigned PUT uploads |
-| ECR | `hearloop-api` | Docker image repository |
+| **Neon** | PostgreSQL 16, serverless, auto-pause | `DATABASE_URL` in .env |
+| **Upstash Redis** | BullMQ queues, serverless | `REDIS_URL` in .env |
+| **Vercel** | Web frontend hosting | Auto-deploy from GitHub main |
+| **Groq** | Whisper STT | `GROQ_API_KEY` in .env |
 
 ---
 
@@ -35,7 +49,24 @@ ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193
 
 ---
 
-## Deployment (Manual — Current)
+## CI/CD (Fully Working — May 14, 2026)
+
+Push to `main` → GitHub Actions → build linux/amd64 Docker image → push ECR → SSH to EC2 → pull & restart container → health check.
+
+**GitHub Secrets required:**
+- `AWS_ACCESS_KEY_ID` — IAM user credentials
+- `AWS_SECRET_ACCESS_KEY` — IAM user credentials
+- `EC2_SSH_KEY` — contents of `~/.ssh/hearloop-key.pem`
+
+**Security group:** `sg-0fdee87e11e224206` (hearloop-api-sg)
+- Port 22: dynamically opened/closed per CI/CD run (runner IP added before SSH, revoked after)
+- Port 3001: open to `0.0.0.0/0`
+
+Workflow file: `.github/workflows/docker-image.yml`
+
+---
+
+## Manual Deployment
 
 From repo root (not `apps/api`):
 
@@ -44,82 +75,63 @@ From repo root (not `apps/api`):
 docker build --platform linux/amd64 -f apps/api/Dockerfile -t hearloop-api .
 
 # 2. Tag for ECR
-docker tag hearloop-api:latest <account_id>.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
+docker tag hearloop-api:latest 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
 
 # 3. Authenticate Docker to ECR
-aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin <account_id>.dkr.ecr.us-east-2.amazonaws.com
+aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 652892608187.dkr.ecr.us-east-2.amazonaws.com
 
 # 4. Push
-docker push <account_id>.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
+docker push 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
 
-# 5. SSH to EC2 and pull
+# 5. SSH to EC2 and restart
 ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193 \
-  "aws ecr get-login-password --region us-east-2 | docker login ... && docker pull ... && docker stop hearloop && docker rm hearloop && docker run -d --name hearloop -p 3001:3001 --env-file /home/ec2-user/.env <image> "
+  "docker stop hearloop-api && docker rm hearloop-api && \
+   docker pull 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest && \
+   docker run -d --name hearloop-api --env-file /home/ec2-user/.env -p 3001:3001 \
+   --restart unless-stopped 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest"
 ```
-
-**Known CI bug**: `.github/workflows/docker-image.yml` uses build context `./apps/api` which breaks the monorepo Dockerfile. Fix pending (P0 in backlog).
 
 ---
 
-## Required Environment Variables (API)
+## Required Environment Variables (API — EC2 `/home/ec2-user/.env`)
 
 | Variable | Purpose |
 |---|---|
-| `DATABASE_URL` | PostgreSQL connection string (RDS) |
-| `REDIS_URL` | ElastiCache Valkey connection string |
-| `AWS_REGION` | us-east-2 |
-| `BEDROCK_REGION` | us-east-2 (or override) |
-| `S3_BUCKET` | hearloop-audio-prod |
+| `DATABASE_URL` | Neon PostgreSQL connection string |
+| `REDIS_URL` | Upstash Redis connection string (`rediss://...`) |
+| `APP_URL` | `https://hearloop.vercel.app` |
+| `PORT` | `3001` |
+| `NODE_ENV` | `production` |
+| `STORAGE_ENDPOINT` | `https://s3.us-east-2.amazonaws.com` |
+| `STORAGE_REGION` | `us-east-2` |
+| `STORAGE_ACCESS_KEY_ID` | IAM key with S3 access |
+| `STORAGE_SECRET_ACCESS_KEY` | IAM secret |
+| `STORAGE_BUCKET` | `hearloop-audio-prod` |
 | `GROQ_API_KEY` | Groq API key for Whisper |
-| `AWS_ACCESS_KEY_ID` | IAM user with Bedrock + S3 + ECR access |
-| `AWS_SECRET_ACCESS_KEY` | IAM secret |
+| `BEDROCK_REGION` | `us-east-2` |
+| `BEDROCK_ACCESS_KEY_ID` | IAM key with Bedrock access |
+| `BEDROCK_SECRET_ACCESS_KEY` | IAM secret |
+| `WEBHOOK_SIGNING_SECRET` | HMAC secret for webhook signatures |
 
 ---
 
-## Required Environment Variables (Web)
+## Required Environment Variables (Web — Vercel)
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | Points to API (via Vercel proxy or direct) |
-
-`apps/web/.env.local` contains a Vercel OIDC token — do not share or commit.
+| `NEXT_PUBLIC_API_URL` | `https://hearloop.vercel.app/api/v1` (uses Vercel proxy) |
 
 ---
 
-## Vercel Configuration
+## Database Migrations (Neon)
 
-`apps/web/vercel.json` handles build and routing config.
-Next.js API proxy at `apps/web/app/api/[...path]/route.ts` forwards to `http://18.223.189.193:3001/v1/*`.
-
-Deploy web frontend:
-```bash
-cd apps/web
-vercel --prod
-```
-
----
-
-## Database Migrations
-
-Run manually via `psql` against RDS (in VPC or via bastion):
+All 3 migrations are applied on Neon. To re-run from scratch:
 
 ```bash
-psql $DATABASE_URL -f packages/db/migrations/001_initial.sql
-# After creating 002:
-psql $DATABASE_URL -f packages/db/migrations/002_partner_auth.sql
-```
-
-Current migration state:
-- `001_initial.sql` — applied (base schema, but missing partner auth columns)
-- `002_partner_auth.sql` — **not yet created** (P0 backlog item)
-
----
-
-## Test Credentials
-
-```
-API key (test partner): sk-test-hearloop-1234567890abcdef
-Partner ID: 7a9e3e2c-07e8-4dae-a133-dd9caa0cad2b
+NEON_URL="postgresql://neondb_owner:...@...neon.tech/neondb?sslmode=require&channel_binding=require"
+psql "$NEON_URL" -f packages/db/migrations/001_initial.sql
+psql "$NEON_URL" -f packages/db/migrations/002_partner_auth.sql
+psql "$NEON_URL" -f packages/db/migrations/003_metrics_columns.sql
 ```
 
 ---
