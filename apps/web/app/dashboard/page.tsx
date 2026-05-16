@@ -43,6 +43,9 @@ export default function DashboardPage() {
   const [realData, setRealData] = useState<any>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [partnerName, setPartnerName] = useState("Partner");
+  const [missingKey, setMissingKey] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const [keyError, setKeyError] = useState("");
 
   useEffect(() => {
     const s = localStorage.getItem("hl_session");
@@ -52,6 +55,7 @@ export default function DashboardPage() {
     if (session.name) setPartnerName(session.name);
 
     if (!session.partnerId || !session.apiKey) {
+      setMissingKey(true);
       setDataLoading(false);
       return;
     }
@@ -63,6 +67,37 @@ export default function DashboardPage() {
       .then(data => { setRealData(data); setDataLoading(false); })
       .catch(() => setDataLoading(false));
   }, [router]);
+
+  const handleSaveKey = async () => {
+    const raw = keyInput.trim();
+    if (!raw.startsWith("sk-live_")) {
+      setKeyError("Key must start with sk-live_");
+      return;
+    }
+    const s = localStorage.getItem("hl_session");
+    if (!s) return;
+    const session = JSON.parse(s);
+    const updated = { ...session, apiKey: raw };
+    localStorage.setItem("hl_session", JSON.stringify(updated));
+    setKeyError("");
+    setDataLoading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/partners/${session.partnerId}/dashboard`, {
+        headers: { "Authorization": `Bearer ${raw}` }
+      });
+      if (!res.ok) {
+        setKeyError("Invalid key — request returned " + res.status);
+        setDataLoading(false);
+        return;
+      }
+      const data = await res.json();
+      setRealData(data);
+      setMissingKey(false);
+    } catch {
+      setKeyError("Network error. Please try again.");
+    }
+    setDataLoading(false);
+  };
 
   // ── Derived data — real or mock ──
   const sessions = realData?.sessions?.length > 0 ? realData.sessions : MOCK_SESSIONS;
@@ -300,6 +335,72 @@ export default function DashboardPage() {
         }
 
         .search input::placeholder { color: var(--ink-3); }
+
+        /* MISSING KEY BANNER */
+        .key-banner {
+          background: #FAEEDA;
+          border-bottom: 0.5px solid #F0C982;
+          padding: 12px 24px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .key-banner-text {
+          font-size: 13px;
+          color: #633806;
+          flex: 1;
+          min-width: 200px;
+        }
+
+        .key-banner-text strong { font-weight: 500; }
+
+        .key-banner-input-wrap {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+
+        .key-banner-input {
+          padding: 7px 12px;
+          background: #fff;
+          border: 0.5px solid #F0C982;
+          border-radius: 7px;
+          font-size: 12px;
+          font-family: 'DM Mono', monospace;
+          color: var(--ink);
+          outline: none;
+          width: 280px;
+          transition: border-color 0.15s;
+        }
+
+        .key-banner-input:focus { border-color: #EF9F27; }
+        .key-banner-input::placeholder { color: #c0a87a; font-family: 'DM Sans', sans-serif; }
+
+        .key-banner-save {
+          padding: 7px 14px;
+          background: #EF9F27;
+          color: #fff;
+          border: none;
+          border-radius: 7px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          transition: background 0.15s;
+          white-space: nowrap;
+        }
+
+        .key-banner-save:hover { background: #CF8010; }
+
+        .key-banner-err {
+          font-size: 11px;
+          color: var(--red);
+          width: 100%;
+          padding-left: 26px;
+        }
 
         .content { padding: 20px 24px; flex: 1; display: flex; flex-direction: column; gap: 16px; }
 
@@ -634,6 +735,32 @@ export default function DashboardPage() {
               <div className="av">AC</div>
             </div>
           </div>
+
+          {missingKey && (
+            <div className="key-banner">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
+                <path d="M8 1.5L14.5 13H1.5L8 1.5Z" stroke="#EF9F27" strokeWidth="1.2" strokeLinejoin="round"/>
+                <path d="M8 6V9M8 11V11.5" stroke="#EF9F27" strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+              <div className="key-banner-text">
+                <strong>API key not found in this browser.</strong> Paste your <code style={{fontSize:11,background:"rgba(0,0,0,0.06)",borderRadius:3,padding:"1px 4px"}}>sk-live_</code> key to load real data.
+              </div>
+              <div className="key-banner-input-wrap">
+                <input
+                  className="key-banner-input"
+                  type="password"
+                  placeholder="sk-live_••••••••••••••••••••••••"
+                  value={keyInput}
+                  onChange={e => { setKeyInput(e.target.value); setKeyError(""); }}
+                  onKeyDown={e => e.key === "Enter" && handleSaveKey()}
+                />
+                <button className="key-banner-save" onClick={handleSaveKey}>
+                  Save & load
+                </button>
+              </div>
+              {keyError && <div className="key-banner-err">{keyError}</div>}
+            </div>
+          )}
 
           <div className="content">
             {/* ── DASHBOARD ── */}

@@ -12,6 +12,14 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [company, setCompany] = useState("");
+  const [apiKeyModal, setApiKeyModal] = useState<string | null>(null);
+  const [keyCopied, setKeyCopied] = useState(false);
+
+  const copyApiKey = (key: string) => {
+    navigator.clipboard.writeText(key);
+    setKeyCopied(true);
+    setTimeout(() => setKeyCopied(false), 2000);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +63,9 @@ export default function LoginPage() {
           name: data.name,
           apiKey: data.apiKey,
         }));
-        router.push("/dashboard");
+        setApiKeyModal(data.apiKey);
+        setLoading(false);
+        return;
       } else {
         // Login — ask for API key if not stored
         const existing = localStorage.getItem("hl_session");
@@ -359,6 +369,118 @@ export default function LoginPage() {
 
         .terms a { color: var(--ink-2); text-decoration: underline; }
 
+        /* API KEY MODAL */
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(14,14,14,0.6);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+          animation: fadeIn 0.2s ease both;
+        }
+
+        .modal {
+          background: var(--paper);
+          border: 0.5px solid var(--paper-3);
+          border-radius: 14px;
+          padding: 32px;
+          max-width: 440px;
+          width: calc(100% - 32px);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          box-shadow: 0 24px 60px rgba(0,0,0,0.18);
+        }
+
+        .modal-icon {
+          width: 44px; height: 44px;
+          border-radius: 50%;
+          background: var(--green-light);
+          display: flex; align-items: center; justify-content: center;
+        }
+
+        .modal-title {
+          font-family: 'Instrument Serif', serif;
+          font-size: 22px;
+          color: var(--ink);
+          margin-bottom: 4px;
+        }
+
+        .modal-sub {
+          font-size: 13px;
+          color: var(--ink-3);
+          line-height: 1.5;
+        }
+
+        .key-box {
+          background: var(--paper-2);
+          border: 0.5px solid var(--paper-3);
+          border-radius: 8px;
+          padding: 12px 14px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+        }
+
+        .key-value {
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+          color: var(--ink);
+          word-break: break-all;
+          flex: 1;
+        }
+
+        .copy-btn {
+          flex-shrink: 0;
+          padding: 5px 12px;
+          background: var(--green);
+          color: #fff;
+          border: none;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          transition: background 0.15s;
+          white-space: nowrap;
+        }
+
+        .copy-btn:hover { background: #0F6E56; }
+        .copy-btn.copied { background: #0F6E56; }
+
+        .modal-warn {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          background: #FAEEDA;
+          border: 0.5px solid #F0C982;
+          border-radius: 8px;
+          padding: 10px 12px;
+          font-size: 12px;
+          color: #633806;
+          line-height: 1.5;
+        }
+
+        .modal-continue {
+          width: 100%;
+          padding: 12px;
+          background: var(--ink);
+          color: var(--paper);
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          font-family: 'DM Sans', sans-serif;
+          transition: background 0.15s;
+        }
+
+        .modal-continue:hover { background: #2a2a2a; }
+
         .spinner {
           width: 16px; height: 16px;
           border: 2px solid rgba(255,255,255,0.3);
@@ -425,6 +547,42 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+
+        {/* API KEY MODAL */}
+        {apiKeyModal && (
+          <div className="modal-overlay">
+            <div className="modal">
+              <div className="modal-icon">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M10 2L12.09 7.26L18 8.18L14 12.14L14.91 18L10 15.27L5.09 18L6 12.14L2 8.18L7.91 7.26L10 2Z" fill="#1D9E75"/>
+                </svg>
+              </div>
+              <div>
+                <div className="modal-title">Account created.</div>
+                <div className="modal-sub">Copy your API key below. You'll need it to authenticate API requests and to log in on new devices.</div>
+              </div>
+              <div className="key-box">
+                <span className="key-value">{apiKeyModal}</span>
+                <button
+                  className={`copy-btn ${keyCopied ? "copied" : ""}`}
+                  onClick={() => copyApiKey(apiKeyModal)}
+                >
+                  {keyCopied ? "Copied ✓" : "Copy"}
+                </button>
+              </div>
+              <div className="modal-warn">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{flexShrink:0,marginTop:1}}>
+                  <path d="M7 1L13 12H1L7 1Z" stroke="#EF9F27" strokeWidth="1.2" strokeLinejoin="round"/>
+                  <path d="M7 5V8M7 10V10.5" stroke="#EF9F27" strokeWidth="1.2" strokeLinecap="round"/>
+                </svg>
+                This key will not be shown again. Store it somewhere safe — a password manager or your `.env` file.
+              </div>
+              <button className="modal-continue" onClick={() => router.push("/dashboard")}>
+                I've saved my key — go to dashboard →
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* RIGHT */}
         <div className="right">
