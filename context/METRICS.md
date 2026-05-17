@@ -135,8 +135,9 @@
 
 ### Action taken
 - Container stopped May 17 to halt error-loop (was generating commands even after cap hit)
-- Fix deployed via git push → CI/CD → EC2
-- Restart scheduled for June 1 when Upstash counter resets
+- New Upstash account/URL provisioned; `REDIS_URL` updated locally + on EC2 `/home/ec2-user/.env`
+- Fix deployed via git push → CI/CD → EC2; container recreated with corrected env (no quoted URL)
+- Upstash free counter resets monthly — next reset gives full 500K with optimized settings in place
 
 ---
 

@@ -66,6 +66,7 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - **Migrated ElastiCache → Upstash Redis** (free tier) — saves $12/month
 - **ECR cleanup** — 90 old images deleted, lifecycle policy set (untagged → 1 day, max 5 tagged)
 - **Monthly cost: ~$9.60/month** (down from $35/month)
+- **BullMQ free-tier protection** — `stalledInterval` 30s → 10 min, concurrency trimmed, `removeOnComplete: true`; projected 500K Upstash commands last 125+ days instead of 17; `.cursor/skills/free-tier-protection/SKILL.md` + rule added
 - **Per-partner CORS `allowed_origins`** — `PATCH /partners/:id/settings` to set origins; `authenticate` decorator enforces 403 on unlisted origins and narrows response header from `*` to the specific origin
 - **Structured Pino logging in all job workers** — `lib/logger.ts` shared logger; all 5 job files + worker dispatcher emit structured JSON (job, sessionId, err context)
 - **Shared CSS design tokens** — `apps/web/app/globals.css` centralises Google Fonts, `:root` vars, reset, `@keyframes`; removed ~25 duplicated lines from each of 5 pages
@@ -77,7 +78,6 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 ### Not Started ❌
 - CloudWatch monitoring + Bedrock invocation logging
 - Custom domain + SSL on EC2 (currently proxied via Vercel)
-- CORS per-partner `allowed_origins` (currently `*`)
 - Dashboard real-data E2E test (blocked by Bedrock quota)
 - npm package / React SDK wrapper
 
@@ -102,7 +102,7 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 ---
 
-## Infrastructure (Updated May 16, 2026)
+## Infrastructure (Updated May 17, 2026)
 
 | Resource | Details | Cost |
 |---|---|---|
@@ -127,16 +127,18 @@ apps/api/src/
   routes/sessions.ts    — authenticated session lifecycle
   routes/public.ts      — public token routes (upload-url + finalize added)
   routes/partners.ts    — register/login/dashboard
-  lib/env.ts            — startup env var validation (NEW)
+  lib/env.ts            — startup env var validation
+  lib/logger.ts         — shared Pino logger + jobLogger(name) child helper
   lib/claude.ts         — Bedrock Nova Lite + Haiku fallback classifier
   lib/groq.ts           — Whisper transcription wrapper
-  lib/queue.ts          — BullMQ queues + workers + enqueue helpers
+  lib/queue.ts          — BullMQ queues + workers + enqueue helpers (free-tier safe)
   lib/storage.ts        — S3 signed URL helpers (uses STORAGE_* env vars)
   lib/db.ts             — Kysely + pg, connects to Neon via DATABASE_URL
   jobs/validate-recording.ts  — MIME/size validation
   jobs/transcribe.ts    — storage → Groq → store → enqueueAnalyze
   jobs/analyze.ts       — Bedrock → update analysis → complete → enqueueWebhook
   jobs/deliver-webhook.ts     — HMAC webhook + SSRF guard + retries
+  jobs/expire-session.ts      — cleans up expired sessions on a schedule
 
 apps/web/
   app/login/page.tsx         — login/signup + API key reveal modal on signup
