@@ -67,7 +67,9 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - **ECR cleanup** — 90 old images deleted, lifecycle policy set (untagged → 1 day, max 5 tagged)
 - **Monthly cost: ~$9.60/month** (down from $35/month)
 - **BullMQ free-tier protection** — `stalledInterval` 30s → 10 min, concurrency trimmed, `removeOnComplete: true`; projected 500K Upstash commands last 125+ days instead of 17; `.cursor/skills/free-tier-protection/SKILL.md` + rule added
-- **Per-partner CORS `allowed_origins`** — `PATCH /partners/:id/settings` to set origins; `authenticate` decorator enforces 403 on unlisted origins and narrows response header from `*` to the specific origin
+- **Per-partner CORS `allowed_origins`** — `PATCH /partners/:id/settings` to set origins; `authenticate` decorator enforces 403 on unlisted origins and narrows response header from `*` to the specific origin; frontend Recorder component validates origin before finalize
+- **Widget API key protection** — `POST /v1/public/sessions/create-token` returns short-lived token (10 min TTL); widget uses token instead of embedding raw API key in config; prevents key exposure in page source and browser history
+- **Server-side session creation** — `POST /v1/public/sessions` via Bearer token (session-create token) or API key; token-based flow is 10-minute TTL, single-use, scoped to session creation only
 - **Structured Pino logging in all job workers** — `lib/logger.ts` shared logger; all 5 job files + worker dispatcher emit structured JSON (job, sessionId, err context)
 - **Shared CSS design tokens** — `apps/web/app/globals.css` centralises Google Fonts, `:root` vars, reset, `@keyframes`; removed ~25 duplicated lines from each of 5 pages
 - **Single root `node_modules`** — removed nested `node_modules` + stray lock files; root `package.json` cleaned of incorrect app-level deps; npm workspaces hoists everything to root
@@ -97,8 +99,10 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 1. Run E2E session — verify `analyses` table has `sentiment_label`, `topics`, `model_used`, `input_tokens`, `output_tokens` populated
 2. Verify `stats.metrics` in dashboard API returns real latency + cost numbers
 3. Wire dashboard 30s auto-refresh to show live data (polling already implemented)
-4. ~~Per-partner CORS `allowed_origins`~~ ✅ Done (no migration needed — column was in 001_initial.sql)
+4. ~~Per-partner CORS `allowed_origins`~~ ✅ Done (backend + frontend)
 5. ~~Structured logging with Pino~~ ✅ Done (`lib/logger.ts`, all 5 job files converted)
+6. ~~Widget API key protection~~ ✅ Done (session-create token flow)
+7. ~~Server-side session creation~~ ✅ Done (token-based `POST /v1/public/sessions`)
 
 ---
 
@@ -125,7 +129,7 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 apps/api/src/
   index.ts              — Fastify server, CORS, auth decorator, worker start
   routes/sessions.ts    — authenticated session lifecycle
-  routes/public.ts      — public token routes (upload-url + finalize added)
+  routes/public.ts      — public token routes (upload-url, finalize, create-token, session creation)
   routes/partners.ts    — register/login/dashboard
   lib/env.ts            — startup env var validation
   lib/logger.ts         — shared Pino logger + jobLogger(name) child helper
@@ -144,13 +148,14 @@ apps/web/
   app/login/page.tsx         — login/signup + API key reveal modal on signup
   app/dashboard/page.tsx     — dashboard + missing key banner + 30s auto-refresh
   app/capture/[token]/page.tsx — hosted capture shell
-  components/Recorder.tsx    — voice recorder (wired to public routes)
-  public/widget.js           — embeddable widget
+  components/Recorder.tsx    — voice recorder with origin validation
+  public/widget.js           — embeddable widget (token-based session creation)
 
 packages/db/migrations/
-  001_initial.sql       — base schema
-  002_partner_auth.sql  — email + password_hash columns
-  003_metrics_columns.sql — model_used, input/output_tokens, processing timestamps
+  001_initial.sql                — base schema
+  002_partner_auth.sql           — email + password_hash columns
+  003_metrics_columns.sql        — model_used, input/output_tokens, processing timestamps
+  004_session_create_tokens.sql  — session_create_tokens table for token-based auth
 ```
 
 ---
@@ -180,6 +185,8 @@ GET    /public/session/:token             public
 POST   /public/session/:token/open        public
 GET    /public/session/:token/upload-url  public
 POST   /public/session/:token/finalize    public
+POST   /public/sessions/create-token      public (apiKey) — returns 10-min TTL token
+POST   /public/sessions                   Bearer token (session-create token) — create session with token
 ```
 
 ---
