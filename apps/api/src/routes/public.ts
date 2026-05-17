@@ -2,11 +2,164 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { randomUUID } from "crypto";
+import crypto from "crypto";
 import { db } from "../lib/db";
 import { getUploadSignedUrl } from "../lib/storage";
 import { enqueueValidate } from "../lib/queue";
+import { logger } from "../lib/logger";
 
 export async function publicRoutes(app: FastifyInstance) {
+  // POST /public/sessions/create-token — create short-lived token for session creation
+  app.post<{ Body: { apiKey: string } }>(
+    "/public/sessions/create-token",
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { apiKey } = req.body;
+
+      if (!apiKey) {
+        return reply.code(400).send({ error: "apiKey required" });
+      }
+
+      try {
+        // 1. Find partner by API key (key is hashed as SHA-256)
+        const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
+        const partner = await db
+          .selectFrom("partners")
+          .selectAll()
+          .where("id", "=", keyHash)
+          .executeTakeFirst();
+
+        if (!partner) {
+          return reply.code(401).send({ error: "Invalid API key" });
+        }
+
+        // 2. Generate token (32 bytes = 64 hex chars)
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        // 3. Store token in DB
+        await db
+          .insertInto("session_create_tokens")
+          .values({
+            partner_id: partner.id,
+            token,
+            expires_at: expiresAt,
+            used_at: null,
+          })
+          .execute();
+
+        // 4. Return token and TTL
+        const expiresIn = Math.floor((expiresAt.getTime() - Date.now()) / 1000);
+        return reply.code(200).send({
+          sessionCreateToken: token,
+          expiresIn,
+        });
+      } catch (err) {
+        logger.error({ err, msg: "Error creating session token" });
+        return reply.code(500).send({ error: "Failed to create token" });
+      }
+    }
+  );
+
+  // Helper: Validate session-create token
+  async function validateSessionCreateToken(token: string) {
+    // 1. Fetch token from DB
+    const tokenRecord = await db
+      .selectFrom("session_create_tokens")
+      .selectAll()
+      .where("token", "=", token)
+      .executeTakeFirst();
+
+    if (!tokenRecord) {
+      return { valid: false, partnerId: null };
+    }
+
+    // 2. Check expiry
+    if (new Date() > tokenRecord.expires_at) {
+      return { valid: false, partnerId: null };
+    }
+
+    // 3. Check if already used
+    if (tokenRecord.used_at) {
+      return { valid: false, partnerId: null };
+    }
+
+    // 4. Mark as used
+    await db
+      .updateTable("session_create_tokens")
+      .set({ used_at: new Date() })
+      .where("id", "=", tokenRecord.id)
+      .execute();
+
+    return { valid: true, partnerId: tokenRecord.partner_id };
+  }
+
+  // POST /public/sessions — create session using bearer token (session-create token) or API key
+  app.post<{
+    Body: {
+      promptText?: string;
+      maxDurationSec?: number;
+      consentRequired?: boolean;
+      consentText?: string;
+      externalEventId?: string;
+    };
+  }>(
+    "/public/sessions",
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const authHeader = req.headers.authorization;
+
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return reply.code(401).send({ error: "Bearer token required" });
+      }
+
+      const token = authHeader.slice(7);
+
+      // Validate session-create token
+      const { valid, partnerId } = await validateSessionCreateToken(token);
+
+      if (!valid || !partnerId) {
+        return reply.code(401).send({ error: "Invalid or expired token" });
+      }
+
+      try {
+        // Generate IDs and token
+        const sessionId = randomUUID();
+        const sessionToken = randomUUID();
+
+        // Create session
+        const now = new Date();
+        await db
+          .insertInto("sessions")
+          .values({
+            id: sessionId,
+            partner_id: partnerId,
+            public_token: sessionToken,
+            status: "created",
+            max_duration_sec: req.body.maxDurationSec ?? 5,
+            metadata_json: req.body.promptText
+              ? JSON.stringify({
+                  promptText: req.body.promptText,
+                  consentRequired: req.body.consentRequired ?? false,
+                  consentText: req.body.consentText,
+                  externalEventId: req.body.externalEventId,
+                })
+              : null,
+            external_event_id: req.body.externalEventId,
+            expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+            created_at: now,
+            updated_at: now,
+          })
+          .execute();
+
+        return reply.code(201).send({
+          sessionId,
+          sessionToken,
+        });
+      } catch (err) {
+        logger.error({ err, msg: "Error creating session with token" });
+        return reply.code(500).send({ error: "Failed to create session" });
+      }
+    }
+  );
   // GET /public/session/:token — resolve token → widget config
   app.get(
     "/public/session/:token",
