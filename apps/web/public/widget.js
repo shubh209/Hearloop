@@ -272,12 +272,26 @@
         this._clearError();
   
         try {
-          // Step 1 — create session
-          const sessionRes = await fetch(`${this.config.apiBaseUrl}/sessions`, {
+          // Step 0 — get session-create token (10 min TTL)
+          const tokenRes = await fetch(`${this.config.apiBaseUrl}/public/sessions/create-token`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.config.apiKey}`,
+            },
+            body: JSON.stringify({
+              apiKey: this.config.apiKey,
+            }),
+          });
+
+          if (!tokenRes.ok) throw new Error('Failed to get session token');
+          const { sessionCreateToken } = await tokenRes.json();
+
+          // Step 1 — create session using token (not raw API key)
+          const sessionRes = await fetch(`${this.config.apiBaseUrl}/public/sessions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${sessionCreateToken}`,
             },
             body: JSON.stringify({
               promptText: this.config.promptText,
@@ -286,45 +300,43 @@
               externalEventId: `widget_${Date.now()}`,
             }),
           });
-  
+
           if (!sessionRes.ok) throw new Error('Failed to create session');
           const { sessionId, sessionToken } = await sessionRes.json();
           this.sessionId = sessionId;
-  
+
           // Step 2 — open session
           await fetch(`${this.config.apiBaseUrl}/public/session/${sessionToken}/open`, {
             method: 'POST',
           });
-  
-          // Step 3 — get upload URL
+
+          // Step 3 — get upload URL via public route
           const mimeType = this.audioBlob.type;
-          const urlRes = await fetch(`${this.config.apiBaseUrl}/sessions/${sessionId}/upload-url`, {
+          const urlRes = await fetch(`${this.config.apiBaseUrl}/public/session/${sessionToken}/upload-url`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.config.apiKey}`,
             },
             body: JSON.stringify({ mimeType }),
           });
-  
+
           if (!urlRes.ok) throw new Error('Failed to get upload URL');
           const { uploadUrl, storageKey } = await urlRes.json();
-  
+
           // Step 4 — upload to S3
           const uploadRes = await fetch(uploadUrl, {
             method: 'PUT',
             body: this.audioBlob,
             headers: { 'Content-Type': mimeType },
           });
-  
+
           if (!uploadRes.ok) throw new Error('Audio upload failed');
-  
-          // Step 5 — finalize
-          const finalRes = await fetch(`${this.config.apiBaseUrl}/sessions/${sessionId}/finalize`, {
+
+          // Step 5 — finalize via public route
+          const finalRes = await fetch(`${this.config.apiBaseUrl}/public/session/${sessionToken}/finalize`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.config.apiKey}`,
             },
             body: JSON.stringify({
               storageKey,
@@ -333,9 +345,9 @@
               consentGiven: true,
             }),
           });
-  
+
           if (!finalRes.ok) throw new Error('Failed to finalize session');
-  
+
           this.state = 'success';
           this._updateUI();
         } catch (err) {
