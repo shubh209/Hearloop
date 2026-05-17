@@ -141,6 +141,32 @@
 
 ---
 
+## Widget API Key Protection — May 17, 2026
+
+### Attack Surface (Key Exposure)
+- **Before:** API key embedded in widget `data-api-key` attribute or config object, visible in page source and browser history
+- **After:** API key only sent once to `/v1/public/sessions/create-token`, receives 10-min TTL token; all subsequent requests use token (key never sent again)
+- **Delta: API key exposure window: unlimited → 10 minutes** (token + single-use prevents reuse)
+- How measured: Browser DevTools → Network tab, inspect POST requests, no raw key in Authorization headers after initial token fetch
+
+### Token Attack Surface
+- **Before:** No rate limiting on session creation (any valid API key could create infinite sessions)
+- **After:** Token is single-use, 10-min TTL, scoped to session creation only; subsequent use rejected with 401
+- **Delta: Session creation rate limiting: none → 1 session per token**
+- How measured: Get token, create session, attempt reuse of same token → `401 Invalid or expired token`
+
+---
+
+## Frontend Origin Validation — May 17, 2026
+
+### CORS Attack Surface (Client-Side)
+- **Before:** Recorder component POSTs to finalize without checking session's allowed_origins (relied entirely on backend CORS header)
+- **After:** Client validates `allowed_origins` from session metadata, rejects requests from unlisted origins with user-friendly error before sending to server
+- **Delta: Frontend CORS guard: 0 → 1** (defense-in-depth, reduces unnecessary network traffic)
+- How measured: Set allowed_origins to "https://example.com", try to POST from https://hearloop.vercel.app → client-side error before network request
+
+---
+
 ## Baselines To Capture Next Session (after Bedrock quota approved)
 
 | Metric | How to measure | Target |
