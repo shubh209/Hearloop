@@ -49,7 +49,7 @@ export function createWorker(
       // Reduce idle Redis polling to stay inside Upstash free tier (500K/mo).
       // Default stalledInterval=30s generates ~14K commands/day just from health checks.
       // At 5 min: ~2.8K/day → full month ≈ 85K, leaves room for actual job traffic.
-      stalledInterval: 300_000,   // check for stalled jobs every 5 min (was 30s)
+      stalledInterval: 600_000,   // check for stalled jobs every 10 min (default 30s would burn Upstash free tier)
       lockDuration:    120_000,   // job lock lasts 2 min before considered stalled
     }
   );

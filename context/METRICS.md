@@ -128,10 +128,10 @@
 - `removeOnFail: { count: 500–1000 }` → retaining 500–1000 failed job keys in Redis
 
 ### After (optimized)
-- `stalledInterval`: 300,000ms (5 min) → ~2,880 commands/day from stall checks
+- `stalledInterval`: 600,000ms (10 min) → ~1,440 commands/day from stall checks
 - `concurrency`: 2 (5 for webhooks)
 - `removeOnComplete: true` + `removeOnFail: { count: 50 }` → minimal key retention
-- Projected daily idle commands: ~4–5K → 500K lasts **100+ days** instead of 17
+- Projected daily idle commands: ~3–4K → 500K lasts **125+ days** instead of 17
 
 ### Action taken
 - Container stopped May 17 to halt error-loop (was generating commands even after cap hit)
