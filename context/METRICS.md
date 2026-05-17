@@ -115,9 +115,36 @@
 
 ---
 
-## Upstash Redis Quota Exhaustion — May 17, 2026
+---
+
+## Worker Duplication Quota Leak — May 17, 2026 (3 PM)
+
+### Incident Summary
+- **164K Redis commands in <1 day** on fresh Upstash instance
+- Quota exhaustion timeline: **~3 days** at this rate (500K/month free tier)
 
 ### Root Cause
+- **Duplicate worker creation** on container restart/redeploy
+- `startWorkers()` had no guard → each restart spawned 5 NEW workers (total: N×5)
+- 5 workers × 10-min stalled-job checks = 720 baseline commands/day
+- **Multiple restarts** multiplied this exponentially
+
+### Fix Applied (Commit d117855)
+- Added `workersStarted` flag in `index.ts`
+- Workers now initialize only once per process
+- Prevents exponential worker multiplication on restart
+
+### Expected Impact After Fix
+- **Before fix:** 164K/day (unbounded on restarts)
+- **After fix:** ~2.8K/day (5 workers × 144 pings/day)
+- **Runway improvement:** 3 days → **180+ days** on free tier
+
+### Lesson Learned
+- Guard against worker/subscription duplication in process-based apps
+- Monitor Upstash quota growth immediately after deployment
+- Each container restart must be idempotent (no resource duplication)
+
+## Upstash Redis Quota Exhaustion — May 17, 2026
 - **Not a key leak.** BullMQ's idle worker background activity consumed the free tier.
 - 5 workers × stalled-job check every 30s = ~29K Redis commands/day → hit 500K cap in 17 days
 - Workers entered error loop once limit hit, generating even more commands
