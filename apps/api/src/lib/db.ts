@@ -93,6 +93,15 @@ export interface WebhookDeliveriesTable {
   created_at: Generated<Date>;
 }
 
+export interface SessionCreateTokensTable {
+  id: Generated<number>;
+  partner_id: string;
+  token: string;
+  expires_at: Date;
+  used_at: Date | null;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   sessions: SessionsTable;
   recordings: RecordingsTable;
@@ -100,6 +109,7 @@ export interface Database {
   api_keys: ApiKeysTable;
   partners: PartnersTable;
   webhook_deliveries: WebhookDeliveriesTable;
+  session_create_tokens: SessionCreateTokensTable;
 }
 
 const pool = new Pool({
