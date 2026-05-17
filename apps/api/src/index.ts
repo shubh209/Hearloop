@@ -100,7 +100,15 @@ app.addHook("onRequest", async (req, reply) => {
 app.get("/health", async () => ({ status: "ok", ts: new Date() }));
 
 // --- Workers ---
+let workersStarted = false;
+
 function startWorkers() {
+  if (workersStarted) {
+    app.log.warn("Workers already started, skipping");
+    return;
+  }
+  workersStarted = true;
+
   const workerLog = jobLogger("worker");
 
   const transcribeWorker = createWorker("transcribe", async (job: Job) => {
