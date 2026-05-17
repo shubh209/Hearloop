@@ -2,6 +2,9 @@
 
 import { analyzeTranscript, AnalysisResult } from "../lib/claude";
 import { db } from "../lib/db";
+import { jobLogger } from "../lib/logger";
+
+const log = jobLogger("analyze");
 
 export interface AnalyzeJobPayload {
   sessionId: string;
@@ -17,11 +20,22 @@ export async function runAnalyzeJob(
   let analysis: AnalysisResult;
 
   try {
-    // 1. Run Claude classification
+    // 1. Run Bedrock classification
     analysis = await analyzeTranscript(transcript, {
       languageHint: languageHint ?? undefined,
     });
-  } catch (err) {
+    log.info(
+      {
+        sessionId,
+        model: analysis.modelUsed,
+        inputTokens: analysis.inputTokens,
+        outputTokens: analysis.outputTokens,
+        sentiment: analysis.sentiment,
+      },
+      "analysis complete"
+    );
+  } catch (err: any) {
+    log.error({ sessionId, err: err.message }, "analysis error");
     await markFailed(sessionId, "analysis_error");
     throw err;
   }
@@ -54,15 +68,19 @@ export async function runAnalyzeJob(
       .where("id", "=", sessionId)
       .execute();
 
+    log.info({ sessionId }, "session completed, enqueuing webhook");
+
     // 4. Enqueue webhook delivery
     await enqueueWebhookDelivery(sessionId);
-  } catch (err) {
+  } catch (err: any) {
+    log.error({ sessionId, err: err.message }, "post-analysis error");
     await markFailed(sessionId, "post_analysis_error");
     throw err;
   }
 }
 
 async function markFailed(sessionId: string, reason: string): Promise<void> {
+  log.error({ sessionId, reason }, "session failed");
   await db
     .updateTable("sessions")
     .set({ status: "failed", failure_reason: reason })

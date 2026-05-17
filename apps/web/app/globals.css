@@ -1,0 +1,66 @@
+/* hearloop/apps/web/app/globals.css
+   Single source of truth for design tokens, resets, and font loading.
+   Import in layout.tsx — do NOT duplicate these in page-level <style> blocks. */
+
+/* ── Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── Reset ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Design tokens ── */
+:root {
+  /* Text */
+  --ink:   #0E0E0E;
+  --ink-2: #3A3A3A;
+  --ink-3: #888;
+
+  /* Backgrounds */
+  --paper:   #F7F4EE;
+  --paper-2: #EFECE4;
+  --paper-3: #E0DDD4;
+
+  /* Brand */
+  --green:   #1D9E75;
+  --green-l: #E1F5EE;
+  /* Alias for pages that use the longer name */
+  --green-light: #E1F5EE;
+
+  /* Semantic */
+  --red:     #E24B4A;
+  --red-l:   #FCEBEB;
+  --amber:   #EF9F27;
+  --amber-l: #FAEEDA;
+  --gold:    #C8A84B;
+  --blue:    #378ADD;
+  --blue-l:  #E6F1FB;
+
+  /* Layout */
+  --r: 10px;
+
+  /* Font stacks */
+  --serif: 'Instrument Serif', serif;
+  --sans:  'DM Sans', sans-serif;
+  --mono:  'DM Mono', monospace;
+}
+
+/* ── Base ── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--sans);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Shared animations ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

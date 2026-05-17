@@ -122,6 +122,71 @@ export async function partnerRoutes(app: FastifyInstance) {
     }
   );
 
+  // PATCH /partners/:id/settings — update webhook_url and/or allowed_origins
+  app.patch(
+    "/partners/:id/settings",
+    { preHandler: [app.authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id } = req.params as { id: string };
+      const partner = (req as any).partner;
+
+      if (partner.id !== id) {
+        return reply.code(403).send({ error: "forbidden" });
+      }
+
+      const body = req.body as {
+        webhookUrl?: string | null;
+        allowedOrigins?: string | null;
+      };
+
+      if (body.webhookUrl !== undefined) {
+        if (body.webhookUrl !== null) {
+          try {
+            const parsed = new URL(body.webhookUrl);
+            if (parsed.protocol !== "https:") {
+              return reply.code(400).send({ error: "webhook_url must use HTTPS" });
+            }
+          } catch {
+            return reply.code(400).send({ error: "webhook_url must be a valid URL" });
+          }
+        }
+      }
+
+      if (body.allowedOrigins !== undefined && body.allowedOrigins !== null) {
+        // Validate each origin — must be a valid URL origin (scheme + host)
+        const origins = body.allowedOrigins.split(",").map((o) => o.trim()).filter(Boolean);
+        for (const origin of origins) {
+          try {
+            const parsed = new URL(origin);
+            if (!parsed.origin || parsed.origin === "null") throw new Error("invalid");
+          } catch {
+            return reply.code(400).send({
+              error: `invalid origin: "${origin}" — must be a full origin like https://example.com`,
+            });
+          }
+        }
+        // Normalise to comma-separated string of trimmed origins
+        body.allowedOrigins = origins.join(",");
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (body.webhookUrl !== undefined) updates["webhook_url"] = body.webhookUrl;
+      if (body.allowedOrigins !== undefined) updates["allowed_origins"] = body.allowedOrigins;
+
+      if (Object.keys(updates).length === 0) {
+        return reply.code(400).send({ error: "no updatable fields provided" });
+      }
+
+      await db
+        .updateTable("partners")
+        .set(updates as any)
+        .where("id", "=", id)
+        .execute();
+
+      return reply.send({ ok: true, updated: Object.keys(updates) });
+    }
+  );
+
   // GET /partners/:id/dashboard — unchanged
   app.get(
     "/partners/:id/dashboard",

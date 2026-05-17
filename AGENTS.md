@@ -66,6 +66,10 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - **Migrated ElastiCache → Upstash Redis** (free tier) — saves $12/month
 - **ECR cleanup** — 90 old images deleted, lifecycle policy set (untagged → 1 day, max 5 tagged)
 - **Monthly cost: ~$9.60/month** (down from $35/month)
+- **Per-partner CORS `allowed_origins`** — `PATCH /partners/:id/settings` to set origins; `authenticate` decorator enforces 403 on unlisted origins and narrows response header from `*` to the specific origin
+- **Structured Pino logging in all job workers** — `lib/logger.ts` shared logger; all 5 job files + worker dispatcher emit structured JSON (job, sessionId, err context)
+- **Shared CSS design tokens** — `apps/web/app/globals.css` centralises Google Fonts, `:root` vars, reset, `@keyframes`; removed ~25 duplicated lines from each of 5 pages
+- **Single root `node_modules`** — removed nested `node_modules` + stray lock files; root `package.json` cleaned of incorrect app-level deps; npm workspaces hoists everything to root
 
 ### Blocked ⚠️
 - **Bedrock daily token quota** — Nova Lite AND Haiku both pending quota increase. Transcript captured correctly by Groq but `sentiment_label`, `topics`, `model_used` remain null. Case opened with AWS, response in 1-2 days.
@@ -93,8 +97,8 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 1. Run E2E session — verify `analyses` table has `sentiment_label`, `topics`, `model_used`, `input_tokens`, `output_tokens` populated
 2. Verify `stats.metrics` in dashboard API returns real latency + cost numbers
 3. Wire dashboard 30s auto-refresh to show live data (polling already implemented)
-4. Per-partner CORS `allowed_origins` (DB migration + backend)
-5. Structured logging with Pino (replace `console.log` in all job files)
+4. ~~Per-partner CORS `allowed_origins`~~ ✅ Done (no migration needed — column was in 001_initial.sql)
+5. ~~Structured logging with Pino~~ ✅ Done (`lib/logger.ts`, all 5 job files converted)
 
 ---
 
@@ -161,6 +165,7 @@ packages/db/migrations/
 POST   /partners/register
 POST   /partners/login
 GET    /partners/:id/dashboard            Bearer API key
+PATCH  /partners/:id/settings             Bearer API key  — webhook_url, allowed_origins
 
 POST   /sessions                          Bearer API key
 GET    /sessions/:id                      Bearer API key

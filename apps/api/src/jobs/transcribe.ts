@@ -4,6 +4,9 @@ import { transcribeAudio, TranscriptResult } from "../lib/groq";
 import { db } from "../lib/db";
 import { enqueueAnalyze } from "../lib/queue";
 import { randomUUID } from "crypto";
+import { jobLogger } from "../lib/logger";
+
+const log = jobLogger("transcribe");
 
 export interface TranscribeJobPayload {
   sessionId: string;
@@ -28,22 +31,20 @@ export async function runTranscribeJob(
 
   try {
     const audioBuffer = await fetchAudioFromStorage(storageKey);
-    console.log("Audio fetched, size:", audioBuffer.byteLength);
+    log.info({ sessionId, sizeBytes: audioBuffer.byteLength }, "audio fetched from storage");
     transcript = await transcribeAudio(audioBuffer, {
       mimeType,
       languageHint,
       promptText,
     });
-    console.log("Transcription done:", transcript.text.slice(0, 50));
+    log.info({ sessionId, lang: transcript.detectedLanguage, chars: transcript.text.length }, "transcription complete");
   } catch (err: any) {
-    console.error("Transcription error:", err.message);
+    log.error({ sessionId, err: err.message }, "transcription error");
     await markFailed(sessionId, "transcription_error");
     throw err;
   }
 
   try {
-    console.log("Storing transcript for session:", sessionId);
-
     await db
       .insertInto("analyses")
       .values({
@@ -68,23 +69,22 @@ export async function runTranscribeJob(
       )
       .execute();
 
-    console.log("Transcript stored. Enqueuing analyze job for:", sessionId);
+    log.info({ sessionId }, "transcript stored, enqueuing analyze");
 
     await enqueueAnalyze({
       sessionId,
       transcript: transcript.text,
       languageHint: transcript.detectedLanguage ?? languageHint,
     });
-
-    console.log("Analyze job enqueued for:", sessionId);
   } catch (err: any) {
-    console.error("Post-transcription error:", err.message);
+    log.error({ sessionId, err: err.message }, "post-transcription error");
     await markFailed(sessionId, "post_transcription_error");
     throw err;
   }
 }
 
 async function markFailed(sessionId: string, reason: string): Promise<void> {
+  log.error({ sessionId, reason }, "session failed");
   await db
     .updateTable("sessions")
     .set({ status: "failed", failure_reason: reason, updated_at: new Date() })

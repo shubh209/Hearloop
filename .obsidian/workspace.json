@@ -4,11 +4,11 @@
     "type": "split",
     "children": [
       {
-        "id": "ae7796fd70f5b390",
+        "id": "4435934f27803978",
         "type": "tabs",
         "children": [
           {
-            "id": "e83585d2f719bbbe",
+            "id": "17f8939ff690dfce",
             "type": "leaf",
             "state": {
               "type": "empty",
@@ -176,8 +176,17 @@
       "bases:Create new base": false
     }
   },
-  "active": "e83585d2f719bbbe",
+  "active": "300251f2016b6b24",
   "lastOpenFiles": [
+    "Untitled.base",
+    "Untitled 1.base",
+    "context/BACKLOG.md",
+    "2026-05-13.md",
+    "node_modules/fastify/README.md",
+    "context/README.md",
+    "context/DECISIONS.md",
+    "context/CATCHUP.md",
+    "context/INFRA.md",
     "voice_micro_feedback_sdk_api_spec.pdf",
     "claude.md"
   ]

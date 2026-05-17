@@ -150,30 +150,9 @@ export default function DashboardPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-          --ink: #0E0E0E;
-          --ink-2: #3A3A3A;
-          --ink-3: #888;
-          --paper: #F7F4EE;
-          --paper-2: #EFECE4;
-          --paper-3: #E0DDD4;
-          --green: #1D9E75;
-          --green-l: #E1F5EE;
-          --red: #E24B4A;
-          --red-l: #FCEBEB;
-          --amber: #EF9F27;
-          --amber-l: #FAEEDA;
-          --blue: #378ADD;
-          --blue-l: #E6F1FB;
-          --r: 10px;
-        }
-
+        /* page-specific overrides */
         html, body { height: 100%; }
-        body { font-family: 'DM Sans', sans-serif; background: var(--paper-2); color: var(--ink); }
+        body { background: var(--paper-2); }
 
         .layout { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; }
 

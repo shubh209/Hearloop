@@ -20,32 +20,8 @@ export default function LandingPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-          --ink: #0E0E0E;
-          --ink-2: #3A3A3A;
-          --ink-3: #888;
-          --paper: #F7F4EE;
-          --paper-2: #EFECE4;
-          --paper-3: #E5E1D6;
-          --green: #1D9E75;
-          --green-light: #E1F5EE;
-          --red: #E24B4A;
-          --gold: #C8A84B;
-          --r: 12px;
-        }
-
-        html { scroll-behavior: smooth; }
-
-        body {
-          font-family: 'DM Sans', sans-serif;
-          background: var(--paper);
-          color: var(--ink);
-          overflow-x: hidden;
-        }
+        /* page-specific overrides */
+        body { background: var(--paper); overflow-x: hidden; }
 
         /* ── NAV ── */
         nav {
@@ -758,11 +734,6 @@ export default function LandingPage() {
         .footer-copy { font-size: 12px; color: rgba(247,244,238,0.3); }
 
         /* ── ANIMATIONS ── */
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-
         @keyframes ripple {
           0% { transform: scale(1); opacity: 0.6; }
           100% { transform: scale(2.5); opacity: 0; }

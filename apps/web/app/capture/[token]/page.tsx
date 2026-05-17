@@ -211,16 +211,14 @@ function StatusScreen({ type }: { type: "expired" | "submitted" }) {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root { --ink: #0E0E0E; --ink-3: #999; --paper: #F7F4EE; --paper-3: #E0DDD4; --green: #1D9E75; --red: #E24B4A; }
-        html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--paper); color: var(--ink); }
+        /* page-specific overrides */
+        html, body { height: 100%; }
+        body { background: var(--paper); }
         .page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
         .card { background: #fff; border: 0.5px solid var(--paper-3); border-radius: 20px; padding: 48px 32px; max-width: 340px; width: 100%; text-align: center; box-shadow: 0 4px 40px rgba(0,0,0,0.06); animation: fadeUp 0.4s ease both; }
         .icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 22px; }
         .title { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--ink); margin-bottom: 8px; }
         .sub { font-size: 13px; color: var(--ink-3); line-height: 1.5; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
       <div className="page">
         <div className="card">

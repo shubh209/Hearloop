@@ -1,7 +1,8 @@
-/node_modules
+node_modules/
 /.obsidian
 /.env
 /claude.md
 /.ssh/*
-/.env.examplenode_modules/
+.env.example
 *.html
+

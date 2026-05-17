@@ -88,31 +88,9 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@500&display=swap');
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-          --ink: #0E0E0E;
-          --ink-2: #3A3A3A;
-          --ink-3: #888;
-          --paper: #F7F4EE;
-          --paper-2: #EFECE4;
-          --paper-3: #E0DDD4;
-          --green: #1D9E75;
-          --green-light: #E1F5EE;
-          --red: #E24B4A;
-        }
-
+        /* page-specific overrides */
         html, body { height: 100%; }
-
-        body {
-          font-family: 'DM Sans', sans-serif;
-          background: var(--paper);
-          color: var(--ink);
-          min-height: 100vh;
-          display: flex;
-        }
+        body { background: var(--paper); min-height: 100vh; display: flex; }
 
         .page {
           display: grid;

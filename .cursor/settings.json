@@ -1,0 +1,7 @@
+{
+  "plugins": {
+    "databases-on-aws": {
+      "enabled": true
+    }
+  }
+}

@@ -48,24 +48,28 @@ Last updated: May 16, 2026 (post session-3)
   - Full manual test: signup → create session → upload audio → verify analysis → see in dashboard
   - Auto-refresh already wired — verify live data appears without page reload
 
-- [ ] **Per-partner CORS `allowed_origins`**
-  - Add `allowed_origins TEXT[]` column migration to `partners` table on Neon
-  - In `index.ts` CORS config, check origin against partner's allowed list for public routes
+- [x] **Per-partner CORS `allowed_origins`** ✅ May 16
+  - Column was in `001_initial.sql` (no migration needed)
+  - `authenticate` decorator enforces 403 on unlisted origins, narrows header from `*` to specific origin
+  - `PATCH /v1/partners/:id/settings` to configure `allowed_origins` + `webhook_url`
 
 ---
 
 ## P2 — Maintainability
 
-- [ ] **Structured logging (Pino)**
-  - Replace `console.log/error` in all job files with Fastify's built-in Pino logger
-  - Log fields: `sessionId`, `partnerId`, `jobId`, `modelId`, `requestId`
+- [x] **Structured logging (Pino)** ✅ May 16
+  - `lib/logger.ts` shared logger, `jobLogger(job)` child helper
+  - All 5 job files + worker dispatcher emit structured JSON
 
-- [ ] **Extract shared CSS / design tokens**
-  - Large inline `<style>` blocks across all Next.js pages
-  - Extract color variables, spacing, typography into a shared CSS module
+- [x] **Extract shared CSS / design tokens** ✅ May 16
+  - `apps/web/app/globals.css` — Google Fonts, reset, `:root` tokens, `@keyframes fadeUp`
+  - Imported in `layout.tsx`; all 5 pages stripped of duplicate `@import`, reset, `:root`, `html/body` base
 
-- [ ] **Single root package-lock.json**
-  - Remove `apps/api/package-lock.json`; install from monorepo root only
+- [x] **Single root node_modules + package-lock.json** ✅ May 16
+  - Removed `apps/api/package-lock.json`, `apps/package-lock.json`, and nested `node_modules`
+  - Removed incorrect root-level app deps from root `package.json` (fastify v5, kysely v0.28, etc.)
+  - `npm install` from root now manages everything via npm workspaces
+  - `.gitignore` fixed: `node_modules/` pattern (was `/node_modules` — only matched root)
 
 - [ ] **Public widget security path**
   - Current: `apiKey` in browser config (partner secret exposed — OK for demo)

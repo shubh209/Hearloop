@@ -3,6 +3,9 @@
 import { db } from "../lib/db";
 import { createHmac } from "crypto";
 import { randomUUID } from "crypto";
+import { jobLogger } from "../lib/logger";
+
+const log = jobLogger("deliver-webhook");
 
 const MAX_ATTEMPTS = 7;
 const WEBHOOK_TIMEOUT_MS = 10000; // 10s
@@ -62,7 +65,7 @@ export async function runDeliverWebhookJob(
     .executeTakeFirst();
 
   if (!partner?.webhook_url) {
-    // No webhook configured — skip silently
+    log.info({ sessionId, partnerId }, "no webhook_url configured, skipping");
     return;
   }
 
@@ -143,17 +146,26 @@ export async function runDeliverWebhookJob(
 
   const attemptCount = (currentDelivery?.attempt_count ?? 0) + 1;
   const isDead = !success && attemptCount >= MAX_ATTEMPTS;
+  const finalStatus = isDead ? "dead" : success ? "delivered" : "failed";
 
   await db
     .updateTable("webhook_deliveries")
     .set({
-      status: isDead ? "dead" : success ? "delivered" : "failed",
+      status: finalStatus,
       attempt_count: attemptCount,
       response_code: responseCode,
       last_attempted_at: new Date(),
     })
     .where("id", "=", deliveryId)
     .execute();
+
+  if (success) {
+    log.info({ sessionId, partnerId, deliveryId, responseCode, attemptCount }, "webhook delivered");
+  } else if (isDead) {
+    log.error({ sessionId, partnerId, deliveryId, responseCode, attemptCount }, "webhook dead-lettered after max attempts");
+  } else {
+    log.warn({ sessionId, partnerId, deliveryId, responseCode, attemptCount }, "webhook delivery failed, will retry");
+  }
 
   // 7. Throw on failure so BullMQ retries with backoff
   if (!success && !isDead) {

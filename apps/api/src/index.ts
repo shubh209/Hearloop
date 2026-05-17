@@ -4,6 +4,7 @@ import { validateEnv } from "./lib/env";
 validateEnv();
 
 import Fastify from "fastify";
+import { jobLogger } from "./lib/logger";
 import { sessionRoutes } from "./routes/sessions";
 import { publicRoutes } from "./routes/public";
 import { db } from "./lib/db";
@@ -59,7 +60,26 @@ app.decorate("authenticate", async (req: any, reply: any) => {
     id: apiKey.partnerId,
     name: apiKey.name,
     webhookUrl: apiKey.webhook_url,
+    allowedOrigins: apiKey.allowed_origins,
   };
+
+  // Per-partner origin enforcement: if the partner has configured allowed_origins,
+  // validate the request Origin and override the CORS header to the specific origin.
+  const requestOrigin = req.headers["origin"];
+  if (apiKey.allowed_origins && requestOrigin) {
+    const allowed = apiKey.allowed_origins
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
+
+    if (!allowed.includes(requestOrigin)) {
+      return reply
+        .code(403)
+        .send({ error: "origin_not_allowed" });
+    }
+    // Override the wildcard set by the onRequest hook with the specific allowed origin.
+    reply.header("Access-Control-Allow-Origin", requestOrigin);
+  }
 });
 
 // --- CORS ---
@@ -75,28 +95,30 @@ app.get("/health", async () => ({ status: "ok", ts: new Date() }));
 
 // --- Workers ---
 function startWorkers() {
+  const workerLog = jobLogger("worker");
+
   const transcribeWorker = createWorker("transcribe", async (job: Job) => {
-    console.log("Processing transcribe job:", job.id, job.data);
+    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "transcribe job started");
     await runTranscribeJob(job.data);
   });
 
   const analyzeWorker = createWorker("analyze", async (job: Job) => {
-    console.log("Processing analyze job:", job.id, job.data);
+    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "analyze job started");
     await runAnalyzeJob(job.data);
   });
 
   const validateWorker = createWorker("validate-recording", async (job: Job) => {
-    console.log("Processing validate job:", job.id, job.data);
+    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "validate job started");
     await runValidateRecordingJob(job.data);
   });
 
   const webhookWorker = createWorker("deliver-webhook", async (job: Job) => {
-    console.log("Processing webhook job:", job.id, job.data);
+    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "webhook job started");
     await runDeliverWebhookJob(job.data);
   });
 
   const expireWorker = createWorker("expire-session", async (job: Job) => {
-    console.log("Processing expire job:", job.id, job.data);
+    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "expire job started");
     await runExpireSessionJob(job.data);
   });
 

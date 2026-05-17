@@ -2,6 +2,9 @@
 
 import { Queue, Worker, Job } from "bullmq";
 import IORedis from "ioredis";
+import { jobLogger } from "./logger";
+
+const log = jobLogger("queue");
 
 export const connection = new IORedis(process.env.REDIS_URL!, {
   maxRetriesPerRequest: null,
@@ -38,25 +41,29 @@ export function createWorker(
   const worker = new Worker(
     queueName,
     async (job: Job) => {
-      console.log(`Processing ${jobName} job:`, job.id, job.data);
       await handler(job);
     },
     {
       connection,
-      concurrency: jobName === "deliver-webhook" ? 20 : 5,
+      concurrency: jobName === "deliver-webhook" ? 5 : 2,
+      // Reduce idle Redis polling to stay inside Upstash free tier (500K/mo).
+      // Default stalledInterval=30s generates ~14K commands/day just from health checks.
+      // At 5 min: ~2.8K/day → full month ≈ 85K, leaves room for actual job traffic.
+      stalledInterval: 300_000,   // check for stalled jobs every 5 min (was 30s)
+      lockDuration:    120_000,   // job lock lasts 2 min before considered stalled
     }
   );
 
   worker.on("failed", (job, err) => {
-    console.error(`Job ${job?.id} (${jobName}) failed:`, err.message);
+    log.error({ jobId: job?.id, jobName, err: err.message }, "job failed");
   });
 
   worker.on("error", (err) => {
-    console.error(`Worker ${jobName} error:`, err.message);
+    log.error({ jobName, err: err.message }, "worker error");
   });
 
   worker.on("completed", (job) => {
-    console.log(`Job ${job.id} (${jobName}) completed`);
+    log.info({ jobId: job.id, jobName }, "job completed");
   });
 
   return worker;
@@ -74,8 +81,8 @@ export async function enqueueValidate(payload: {
     jobId: `validate-${payload.sessionId}`,
     attempts: 2,
     backoff: { type: "exponential", delay: 1000 },
-    removeOnComplete: { count: 100 },
-    removeOnFail: { count: 500 },
+    removeOnComplete: true,
+    removeOnFail: { count: 50 },
   });
 }
 
@@ -90,8 +97,8 @@ export async function enqueueTranscribe(payload: {
     jobId: `transcribe-${payload.sessionId}`,
     attempts: 3,
     backoff: { type: "exponential", delay: 2000 },
-    removeOnComplete: { count: 100 },
-    removeOnFail: { count: 500 },
+    removeOnComplete: true,
+    removeOnFail: { count: 50 },
   });
 }
 
@@ -104,8 +111,8 @@ export async function enqueueAnalyze(payload: {
     jobId: `analyze-${payload.sessionId}`,
     attempts: 3,
     backoff: { type: "exponential", delay: 2000 },
-    removeOnComplete: { count: 100 },
-    removeOnFail: { count: 500 },
+    removeOnComplete: true,
+    removeOnFail: { count: 50 },
   });
 }
 
@@ -118,8 +125,8 @@ export async function enqueueWebhook(payload: {
     jobId: `webhook-${payload.eventType}-${payload.sessionId}`,
     attempts: 7,
     backoff: { type: "exponential", delay: 5000 },
-    removeOnComplete: { count: 50 },
-    removeOnFail: { count: 1000 },
+    removeOnComplete: true,
+    removeOnFail: { count: 50 },
   });
 }
 
@@ -135,8 +142,8 @@ export async function enqueueExpireSession(
       delay: delayMs,
       attempts: 3,
       backoff: { type: "exponential", delay: 2000 },
-      removeOnComplete: { count: 100 },
-      removeOnFail: { count: 500 },
+      removeOnComplete: true,
+      removeOnFail: { count: 50 },
     }
   );
 }

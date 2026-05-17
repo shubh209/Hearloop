@@ -80,17 +80,9 @@ export default function DocsPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        :root {
-          --ink: #0E0E0E; --ink-2: #3A3A3A; --ink-3: #888;
-          --paper: #F7F4EE; --paper-2: #EFECE4; --paper-3: #E0DDD4;
-          --green: #1D9E75; --green-l: #E1F5EE;
-          --serif: 'Instrument Serif', serif;
-          --sans: 'DM Sans', sans-serif;
-          --mono: 'DM Mono', monospace;
-        }
-        html, body { height: 100%; font-family: var(--sans); background: var(--paper); color: var(--ink); }
+        /* page-specific overrides */
+        html, body { height: 100%; }
+        body { background: var(--paper); }
         .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
         .sidebar { background: var(--paper); border-right: 0.5px solid var(--paper-3); position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; }
         .sid-logo { padding: 20px 18px; border-bottom: 0.5px solid var(--paper-3); display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 18px; color: var(--ink); text-decoration: none; }

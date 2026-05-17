@@ -3,6 +3,9 @@
 import { db } from "../lib/db";
 import { getAudioBuffer } from "../lib/storage";
 import { enqueueTranscribe } from "../lib/queue";
+import { jobLogger } from "../lib/logger";
+
+const log = jobLogger("validate-recording");
 
 const SUPPORTED_MIME_TYPES = [
   "audio/webm",
@@ -40,6 +43,7 @@ export async function runValidateRecordingJob(
 
   // 1. Mime type check
   if (!SUPPORTED_MIME_TYPES.includes(mimeType)) {
+    log.warn({ sessionId, mimeType }, "unsupported mime type");
     await markFailed(sessionId, "unsupported_mime_type");
     return;
   }
@@ -48,29 +52,34 @@ export async function runValidateRecordingJob(
 
   try {
     audioBuffer = await getAudioBuffer(storageKey);
-  } catch {
+  } catch (err: any) {
+    log.error({ sessionId, storageKey, err: err.message }, "storage fetch error");
     await markFailed(sessionId, "storage_fetch_error");
     return;
   }
 
   // 2. Size checks
   if (audioBuffer.byteLength === 0) {
+    log.warn({ sessionId }, "empty file");
     await markFailed(sessionId, "empty_file");
     return;
   }
 
   if (audioBuffer.byteLength < MIN_FILE_SIZE_BYTES) {
+    log.warn({ sessionId, sizeBytes: audioBuffer.byteLength }, "file too small");
     await markFailed(sessionId, "file_too_small");
     return;
   }
 
   if (audioBuffer.byteLength > MAX_FILE_SIZE_BYTES) {
+    log.warn({ sessionId, sizeBytes: audioBuffer.byteLength }, "file too large");
     await markFailed(sessionId, "file_too_large");
     return;
   }
 
   // 3. Basic decode check — verify file has valid audio header bytes
   if (!hasValidAudioHeader(audioBuffer, mimeType)) {
+    log.warn({ sessionId, mimeType }, "invalid audio header");
     await markFailed(sessionId, "invalid_audio_header");
     return;
   }
@@ -81,6 +90,8 @@ export async function runValidateRecordingJob(
     .set({ size_bytes: audioBuffer.byteLength })
     .where("session_id", "=", sessionId)
     .execute();
+
+  log.info({ sessionId, sizeBytes: audioBuffer.byteLength, mimeType }, "validation passed, enqueuing transcribe");
 
   // 5. Validation passed — enqueue transcription
   await enqueueTranscribe({
@@ -146,6 +157,7 @@ function hasValidAudioHeader(buffer: Buffer, mimeType: string): boolean {
 }
 
 async function markFailed(sessionId: string, reason: string): Promise<void> {
+  log.error({ sessionId, reason }, "session failed");
   await db
     .updateTable("sessions")
     .set({ status: "failed", failure_reason: reason, updated_at: new Date() })

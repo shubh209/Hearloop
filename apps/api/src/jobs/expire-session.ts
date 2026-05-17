@@ -2,6 +2,9 @@
 
 import { db } from "../lib/db";
 import { deleteAudio } from "../lib/storage";
+import { jobLogger } from "../lib/logger";
+
+const log = jobLogger("expire-session");
 
 export interface ExpireSessionPayload {
   sessionId: string;
@@ -20,18 +23,18 @@ export async function runExpireSessionJob(
     .executeTakeFirst();
 
   if (!session) {
-    console.log(`Session ${sessionId} not found — skip expire`);
+    log.warn({ sessionId }, "session not found, skipping expire");
     return;
   }
 
   // Already terminal — nothing to do
   const terminalStates = ["completed", "failed", "expired", "deleted"];
   if (terminalStates.includes(session.status)) {
-    console.log(`Session ${sessionId} already ${session.status} — skip expire`);
+    log.debug({ sessionId, status: session.status }, "session already terminal, skipping expire");
     return;
   }
 
-  console.log(`Expiring session ${sessionId} (was: ${session.status})`);
+  log.info({ sessionId, prevStatus: session.status }, "expiring session");
 
   // 2. Fetch recording if exists
   const recording = await db
@@ -44,10 +47,9 @@ export async function runExpireSessionJob(
   if (recording) {
     try {
       await deleteAudio(recording.storage_key);
-      console.log(`Deleted audio for expired session ${sessionId}`);
+      log.info({ sessionId, storageKey: recording.storage_key }, "deleted audio for expired session");
     } catch (err: any) {
-      // Non-fatal — log and continue
-      console.warn(`Failed to delete audio for ${sessionId}:`, err.message);
+      log.warn({ sessionId, err: err.message }, "failed to delete audio for expired session (non-fatal)");
     }
   }
 
@@ -58,5 +60,5 @@ export async function runExpireSessionJob(
     .where("id", "=", sessionId)
     .execute();
 
-  console.log(`Session ${sessionId} expired`);
+  log.info({ sessionId }, "session expired");
 }
