@@ -194,6 +194,16 @@
 
 ---
 
+## CI/CD Validate Gate — May 17, 2026
+
+### Silent Deployment Failures
+- **Before:** No pre-deploy lint; broken Dockerfile failed in `deploy` job after opening SG, building full image (~3 min wasted per push). Failures went unnoticed for multiple pushes — live EC2 was running stale code.
+- **After:** `validate` job (tsc + hadolint) runs first; `deploy` blocked until validate is green. Any Dockerfile or TypeScript error is caught in ~60s with zero AWS cost.
+- **Delta: Time-to-detect broken Dockerfile: days → <60 seconds**
+- How measured: `gh run list --repo shubh209/Hearloop --limit 5` — all runs now show two sequential jobs
+
+---
+
 ## Baselines To Capture Next Session (after Bedrock quota approved)
 
 | Metric | How to measure | Target |

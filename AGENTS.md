@@ -3,6 +3,8 @@
 > **One-file catchup.** Read this file first. For deeper dives see `context/` folder.
 > This file is auto-read by Cursor, Claude Code, GitHub Copilot, Kiro, and OpenAI Codex agents.
 
+[![CI](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml/badge.svg)](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml)
+
 ---
 
 ## What It Is
@@ -54,7 +56,7 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - All Next.js pages: landing, login/signup, dashboard, capture, docs
 - Embeddable `widget.js` (full state machine)
 - Next.js API proxy (avoids mixed-content HTTPS issue)
-- **CI/CD fully working** — push to `main` → build → ECR push → SSH → deploy → health check (~1 min)
+- **CI/CD fully working** — `validate` job (tsc + hadolint) gates `deploy`; push to `main` → build → ECR push → SSH → deploy → health check (~2 min). Badge above shows live status.
 - Metrics columns in DB: `model_used`, `input_tokens`, `output_tokens`, `processing_started_at`, `processing_completed_at`
 - Dashboard API returns `stats.metrics` (avg latency, token totals, estimated cost, model breakdown)
 - **API key reveal modal after signup** — shows key once with copy button before redirecting
