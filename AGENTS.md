@@ -41,9 +41,9 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 ---
 
-## Current State
+## Current State (Updated May 17, 2026)
 
-### Done ✅
+### Done ✅ (Session 5)
 - Full REST API: session CRUD, signed S3 upload, finalize, result, delete
 - Partner register/login/dashboard endpoints (bcrypt, SHA-256 key hashing)
 - Public capture routes: `GET /public/session/:token/upload-url` + `POST /public/session/:token/finalize`
@@ -70,6 +70,8 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - **Per-partner CORS `allowed_origins`** — `PATCH /partners/:id/settings` to set origins; `authenticate` decorator enforces 403 on unlisted origins and narrows response header from `*` to the specific origin; frontend Recorder component validates origin before finalize
 - **Widget API key protection** — `POST /v1/public/sessions/create-token` returns short-lived token (10 min TTL); widget uses token instead of embedding raw API key in config; prevents key exposure in page source and browser history
 - **Server-side session creation** — `POST /v1/public/sessions` via Bearer token (session-create token) or API key; token-based flow is 10-minute TTL, single-use, scoped to session creation only
+- **Frontend origin validation** — Recorder component fetches `allowed_origins` from session metadata, validates origin before finalize POST (defense-in-depth)
+- **Vercel config** — `vercel.json` added; builds only `apps/web` (skips backend), frontend deploys cleanly
 - **Structured Pino logging in all job workers** — `lib/logger.ts` shared logger; all 5 job files + worker dispatcher emit structured JSON (job, sessionId, err context)
 - **Shared CSS design tokens** — `apps/web/app/globals.css` centralises Google Fonts, `:root` vars, reset, `@keyframes`; removed ~25 duplicated lines from each of 5 pages
 - **Single root `node_modules`** — removed nested `node_modules` + stray lock files; root `package.json` cleaned of incorrect app-level deps; npm workspaces hoists everything to root
@@ -98,11 +100,8 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 1. Run E2E session — verify `analyses` table has `sentiment_label`, `topics`, `model_used`, `input_tokens`, `output_tokens` populated
 2. Verify `stats.metrics` in dashboard API returns real latency + cost numbers
-3. Wire dashboard 30s auto-refresh to show live data (polling already implemented)
-4. ~~Per-partner CORS `allowed_origins`~~ ✅ Done (backend + frontend)
-5. ~~Structured logging with Pino~~ ✅ Done (`lib/logger.ts`, all 5 job files converted)
-6. ~~Widget API key protection~~ ✅ Done (session-create token flow)
-7. ~~Server-side session creation~~ ✅ Done (token-based `POST /v1/public/sessions`)
+3. Capture before/after metrics in `context/METRICS.md` (portfolio-ready)
+4. ~~Per-partner CORS~~ ✅ Done | ~~Structured logging~~ ✅ Done | ~~Widget key protection~~ ✅ Done | ~~Server session creation~~ ✅ Done
 
 ---
 
