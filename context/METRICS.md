@@ -123,21 +123,21 @@
 - **164K Redis commands in <1 day** on fresh Upstash instance
 - Quota exhaustion timeline: **~3 days** at this rate (500K/month free tier)
 
-### Root Cause
-- **Duplicate worker creation** on container restart/redeploy
-- `startWorkers()` had no guard → each restart spawned 5 NEW workers (total: N×5)
-- 5 workers × 10-min stalled-job checks = 720 baseline commands/day
-- **Multiple restarts** multiplied this exponentially
+### Root Cause (Corrected)
+- **BullMQ `drainDelay` defaults to 5 seconds** — each idle worker fires `BZPOPMIN` every 5s
+- 5 workers × 8 cmds × 12 cycles/min = **480 cmds/min = ~691K/day**
+- `stalledInterval` only controls stalled-job detection; `drainDelay` controls idle polling rate
+- `workersStarted` guard (d117855) correct but doesn't address the polling rate
 
-### Fix Applied (Commit d117855)
-- Added `workersStarted` flag in `index.ts`
-- Workers now initialize only once per process
-- Prevents exponential worker multiplication on restart
+### Fix Applied (Commit f04ef69)
+- Set `drainDelay: 300` (5 min) in all workers in `lib/queue.ts`
+- `BZPOPMIN` now fires every 5 min per worker instead of every 5s
+- 97.8% reduction in idle Redis commands
 
-### Expected Impact After Fix
-- **Before fix:** 164K/day (unbounded on restarts)
-- **After fix:** ~2.8K/day (5 workers × 144 pings/day)
-- **Runway improvement:** 3 days → **180+ days** on free tier
+### Impact After Fix
+- **Before:** ~480 cmds/min → 691K/day (exhausts 500K/month in <1 day)
+- **After:** ~8 cmds/min → 11.5K/day (under 15K/day safe ceiling)
+- **Measured by:** Upstash command counter before/after deployment
 
 ### Lesson Learned
 - Guard against worker/subscription duplication in process-based apps
