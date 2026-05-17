@@ -116,14 +116,43 @@ export default function Recorder({
     try {
       const mimeType = audioBlobRef.current.type;
 
-      // 1. Open session — must send explicit body to satisfy Fastify's JSON parser
+      // 1. Fetch session metadata to get allowed_origins
+      const sessionMetaRes = await fetch(
+        `${API_BASE}/public/session/${sessionToken}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      if (!sessionMetaRes.ok) {
+        throw new Error("Failed to fetch session metadata");
+      }
+
+      const sessionMeta = await sessionMetaRes.json();
+      
+      // 2. Validate origin if allowed_origins is set
+      if (sessionMeta.allowed_origins) {
+        const currentOrigin = window.location.origin;
+        const allowedOriginsList = sessionMeta.allowed_origins
+          .split(",")
+          .map((o: string) => o.trim());
+        
+        if (!allowedOriginsList.includes(currentOrigin)) {
+          throw new Error(
+            `Origin ${currentOrigin} is not allowed. Permitted origins: ${sessionMeta.allowed_origins}`
+          );
+        }
+      }
+
+      // 3. Open session — must send explicit body to satisfy Fastify's JSON parser
       await fetch(`${API_BASE}/public/session/${sessionToken}/open`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
 
-      // 2. Get signed upload URL via public route (no Bearer auth needed)
+      // 4. Get signed upload URL via public route (no Bearer auth needed)
       const urlRes = await fetch(
         `${API_BASE}/public/session/${sessionToken}/upload-url`,
         {
@@ -136,7 +165,7 @@ export default function Recorder({
       if (!urlRes.ok) throw new Error("Failed to get upload URL");
       const { uploadUrl, storageKey } = await urlRes.json();
 
-      // 3. Upload directly to S3
+      // 5. Upload directly to S3
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
         body: audioBlobRef.current,
@@ -145,7 +174,7 @@ export default function Recorder({
 
       if (!uploadRes.ok) throw new Error("Audio upload failed");
 
-      // 4. Finalize session
+      // 6. Finalize session
       const finalizeRes = await fetch(
         `${API_BASE}/public/session/${sessionToken}/finalize`,
         {
@@ -165,7 +194,8 @@ export default function Recorder({
       setState("submitted");
       onSubmitted?.();
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      setError(message);
       setState("error");
     }
   }, [sessionToken, consentGiven, onSubmitted]);
