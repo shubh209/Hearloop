@@ -1,6 +1,18 @@
 "use client";
 // hearloop/apps/web/components/Recorder.tsx
 
+/**
+ * Recorder component for capturing voice feedback.
+ * 
+ * Two auth flows supported:
+ * 1. Public token flow: sessionToken from URL (no API key needed)
+ * 2. Authenticated flow: Bearer API key (for programmatic session creation)
+ * 
+ * The public token flow is used here; the sessionToken is passed as a prop
+ * and used directly without Bearer auth. Origin validation is performed
+ * client-side before finalize.
+ */
+
 import { useState, useRef, useCallback } from "react";
 
 type RecorderState =
