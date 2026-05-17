@@ -10,10 +10,10 @@ import { logger } from "../lib/logger";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — create short-lived token for session creation
-  app.post<{ Body: { apiKey: string } }>(
+  app.post(
     "/public/sessions/create-token",
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const { apiKey } = req.body;
+      const { apiKey } = req.body as { apiKey?: string };
 
       if (!apiKey) {
         return reply.code(400).send({ error: "apiKey required" });
@@ -94,15 +94,7 @@ export async function publicRoutes(app: FastifyInstance) {
   }
 
   // POST /public/sessions — create session using bearer token (session-create token) or API key
-  app.post<{
-    Body: {
-      promptText?: string;
-      maxDurationSec?: number;
-      consentRequired?: boolean;
-      consentText?: string;
-      externalEventId?: string;
-    };
-  }>(
+  app.post(
     "/public/sessions",
     async (req: FastifyRequest, reply: FastifyReply) => {
       const authHeader = req.headers.authorization;
@@ -121,6 +113,14 @@ export async function publicRoutes(app: FastifyInstance) {
       }
 
       try {
+        const body = req.body as {
+          promptText?: string;
+          maxDurationSec?: number;
+          consentRequired?: boolean;
+          consentText?: string;
+          externalEventId?: string;
+        };
+
         // Generate IDs and token
         const sessionId = randomUUID();
         const sessionToken = randomUUID();
@@ -134,16 +134,16 @@ export async function publicRoutes(app: FastifyInstance) {
             partner_id: partnerId,
             public_token: sessionToken,
             status: "created",
-            max_duration_sec: req.body.maxDurationSec ?? 5,
-            metadata_json: req.body.promptText
+            max_duration_sec: body.maxDurationSec ?? 5,
+            metadata_json: body.promptText
               ? JSON.stringify({
-                  promptText: req.body.promptText,
-                  consentRequired: req.body.consentRequired ?? false,
-                  consentText: req.body.consentText,
-                  externalEventId: req.body.externalEventId,
+                  promptText: body.promptText,
+                  consentRequired: body.consentRequired ?? false,
+                  consentText: body.consentText,
+                  externalEventId: body.externalEventId,
                 })
               : null,
-            external_event_id: req.body.externalEventId,
+            external_event_id: body.externalEventId,
             expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
             created_at: now,
             updated_at: now,
