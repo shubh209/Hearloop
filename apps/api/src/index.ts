@@ -1,5 +1,11 @@
 // hearloop/apps/api/src/index.ts
 
+import * as dotenv from "dotenv";
+import * as path from "path";
+
+// Load .env from monorepo root
+dotenv.config({ path: path.join(process.cwd(), "../../.env") });
+
 import { validateEnv } from "./lib/env";
 validateEnv();
 
