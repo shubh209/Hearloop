@@ -214,3 +214,53 @@
 | Session completion rate | `SELECT stats.completionRate FROM GET /partners/:id/dashboard` | > 90% |
 | Dashboard load time | Browser DevTools → Network → time to first data paint | < 1s |
 | Vercel First Load JS (dashboard) | Vercel build output | < 120 kB |
+
+---
+
+## Business Context Injection — May 19, 2026
+
+### Analysis Relevance
+- **Before:** Classifier received only raw transcript — no knowledge of business type, industry, or services
+- **After:** `partners.business_context` (set via `PATCH /partners/:id/settings`) is prepended to the Bedrock prompt at analysis time; summary and topic classification are scoped to the partner's actual business
+- **Delta:** Qualitative — summaries now reference specific service type (e.g., "oil change wait time") instead of generic descriptions. Measurable baseline needed after Bedrock quota approved.
+- How measured (next session): Compare summary text for identical transcripts with and without `business_context` set
+
+### Token Cost Impact
+- **Before:** User message = `Classify this feedback transcript: "..."` (~15–20 input tokens overhead)
+- **After:** User message = `Business context: [up to 500 chars]\n\nClassify this feedback transcript: "..."` (~130 input tokens overhead at max context length)
+- **Delta:** +~110 input tokens per session at max context = +$0.0000066/session (negligible at Nova Lite pricing)
+- How measured: `SELECT AVG(input_tokens) FROM analyses WHERE model_used IS NOT NULL` — compare before/after
+
+---
+
+## Redis drainDelay Tuning — May 19, 2026
+
+### Idle Command Rate (Second Fix)
+- **Before (post-Session-5 fix):** `drainDelay: 300` (5 min) — observed ~18K commands/day (higher than projected 11.5K due to Queue instance keepalives)
+- **After:** `drainDelay: 600` (10 min) + `validateQueue` added to shutdown handler
+- **Projected:** ~6–8K commands/day → 500K/month lasts ~62–83 days (resets monthly anyway)
+- How measured: Upstash dashboard command counter 24h after deploy
+- Root cause note: BullMQ Queue instances (not just Workers) maintain their own Redis connections with background activity. 5 queues + 5 workers = ~10–12 active connections each doing keepalives.
+
+---
+
+## Redis Connection Architecture Fix — May 19, 2026
+
+### Root Cause (Final)
+- **Before:** Single `IORedis` connection shared between 5 Queue instances + 5 Worker instances
+- BullMQ docs explicitly prohibit sharing connections between Queues and Workers
+- Sharing caused BullMQ to spawn extra internal connections that ignored `drainDelay` entirely
+- 5 persistent Queue instances alive 24/7 each maintained their own background heartbeat
+- Result: ~17K commands/day despite `drainDelay: 600` setting
+
+### Fix Applied
+- Workers use a single dedicated `workerConnection` (shared safely among workers only)
+- Queue instances are created on-demand per `enqueue()` call, then immediately closed (`queue.close()` + `conn.disconnect()`)
+- No Queue instances remain alive between jobs — zero persistent Queue background activity
+- `drainDelay: 600` now actually controls the only remaining idle polling (worker BZPOPMIN)
+
+### Projected After Fix
+- **Before:** ~17K commands/day (Queue keepalives + Worker polls, drainDelay ignored)
+- **After:** 5 workers × ~8 cmds/poll × 144 polls/day (600s interval) = **~5,760 cmds/day**
+- **Delta: ~70% reduction** — well under 15K/day safe ceiling
+- How measured: Upstash dashboard command counter 24h after deploy

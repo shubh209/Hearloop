@@ -137,6 +137,7 @@ export async function partnerRoutes(app: FastifyInstance) {
       const body = req.body as {
         webhookUrl?: string | null;
         allowedOrigins?: string | null;
+        businessContext?: string | null;
       };
 
       if (body.webhookUrl !== undefined) {
@@ -172,6 +173,12 @@ export async function partnerRoutes(app: FastifyInstance) {
       const updates: Record<string, unknown> = {};
       if (body.webhookUrl !== undefined) updates["webhook_url"] = body.webhookUrl;
       if (body.allowedOrigins !== undefined) updates["allowed_origins"] = body.allowedOrigins;
+      if (body.businessContext !== undefined) {
+        // Cap at 500 chars — enough for a clear business description, not a novel
+        updates["business_context"] = body.businessContext
+          ? body.businessContext.trim().slice(0, 500)
+          : null;
+      }
 
       if (Object.keys(updates).length === 0) {
         return reply.code(400).send({ error: "no updatable fields provided" });

@@ -17,12 +17,33 @@ export async function runAnalyzeJob(
 ): Promise<void> {
   const { sessionId, transcript, languageHint } = payload;
 
+  // Fetch partner's business context for more relevant classification.
+  // We look it up here (not in the queue payload) so it's always current.
+  let businessContext: string | null = null;
+  try {
+    const row = await db
+      .selectFrom("sessions")
+      .innerJoin("partners", "partners.id", "sessions.partner_id")
+      .select(["partners.business_context", "partners.name"])
+      .where("sessions.id", "=", sessionId)
+      .executeTakeFirst();
+    businessContext = row?.business_context ?? null;
+    log.info(
+      { sessionId, hasContext: !!businessContext, partnerName: row?.name },
+      "fetched partner context for analysis"
+    );
+  } catch (err: any) {
+    // Non-fatal — fall back to context-free analysis
+    log.warn({ sessionId, err: err.message }, "failed to fetch partner context, proceeding without it");
+  }
+
   let analysis: AnalysisResult;
 
   try {
-    // 1. Run Bedrock classification
+    // 1. Run Bedrock classification with business context
     analysis = await analyzeTranscript(transcript, {
       languageHint: languageHint ?? undefined,
+      businessContext: businessContext ?? undefined,
     });
     log.info(
       {

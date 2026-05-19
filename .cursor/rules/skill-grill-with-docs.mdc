@@ -1,0 +1,34 @@
+---
+description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation (CONTEXT.md, ADRs) inline as decisions crystallise. Use when user wants to stress-test a plan against their project's language and documented decisions.
+alwaysApply: false
+---
+
+Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+
+Ask the questions one at a time, waiting for feedback on each question before continuing.
+
+If a question can be answered by exploring the codebase, explore the codebase instead.
+
+## Domain awareness
+
+Look for existing documentation:
+- `CONTEXT.md` at repo root — domain glossary
+- `docs/adr/` — architectural decision records
+
+Create files lazily — only when you have something to write.
+
+## During the session
+
+- **Challenge against the glossary** — if the user uses a term that conflicts with `CONTEXT.md`, call it out immediately
+- **Sharpen fuzzy language** — propose a precise canonical term when the user uses vague or overloaded terms
+- **Discuss concrete scenarios** — stress-test domain relationships with specific edge cases
+- **Cross-reference with code** — if the user states how something works, check whether the code agrees
+- **Update CONTEXT.md inline** — when a term is resolved, update it right there, don't batch
+
+`CONTEXT.md` is a glossary only — no implementation details, no specs, no scratch pad.
+
+## ADR criteria (all three must be true)
+
+1. Hard to reverse
+2. Surprising without context
+3. The result of a real trade-off with genuine alternatives

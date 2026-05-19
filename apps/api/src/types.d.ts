@@ -13,6 +13,8 @@ declare module "fastify" {
       id: string;
       name: string;
       webhookUrl: string | null;
+      allowedOrigins: string | null;
+      businessContext: string | null;
     };
   }
 }

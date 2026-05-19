@@ -15,7 +15,7 @@ import { jobLogger } from "./lib/logger";
 import { sessionRoutes } from "./routes/sessions";
 import { publicRoutes } from "./routes/public";
 import { db } from "./lib/db";
-import { webhookQueue, createWorker, analyzeQueue, expireQueue, transcribeQueue } from "./lib/queue";
+import { workerConnection, createWorker } from "./lib/queue";
 import { runValidateRecordingJob } from "./jobs/validate-recording";
 import { runTranscribeJob } from "./jobs/transcribe";
 import { runAnalyzeJob } from "./jobs/analyze";
@@ -49,6 +49,7 @@ app.decorate("authenticate", async (req: any, reply: any) => {
       "partners.webhook_url",
       "partners.allowed_origins",
       "partners.default_config_json",
+      "partners.business_context",
     ])
     .where("api_keys.key_hash", "=", keyHash)
     .where("api_keys.revoked_at", "is", null)
@@ -68,6 +69,7 @@ app.decorate("authenticate", async (req: any, reply: any) => {
     name: apiKey.name,
     webhookUrl: apiKey.webhook_url,
     allowedOrigins: apiKey.allowed_origins,
+    businessContext: apiKey.business_context ?? null,
   };
 
   // Per-partner origin enforcement: if the partner has configured allowed_origins,
@@ -145,11 +147,9 @@ function startWorkers() {
       analyzeWorker.close(),
       webhookWorker.close(),
       expireWorker.close(),
-      transcribeQueue.close(),
-      analyzeQueue.close(),
-      webhookQueue.close(),
-      expireQueue.close(),
     ]);
+    // Close the shared worker connection last, after all workers are done
+    workerConnection.disconnect();
     process.exit(0);
   };
 

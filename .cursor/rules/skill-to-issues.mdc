@@ -1,0 +1,47 @@
+---
+description: Break a plan, spec, or PRD into independently-grabbable issues on the project issue tracker using tracer-bullet vertical slices. Use when user wants to convert a plan into issues, create implementation tickets, or break down work into issues.
+alwaysApply: false
+---
+
+# To Issues
+
+Break a plan into independently-grabbable issues using vertical slices (tracer bullets).
+
+## Process
+
+### 1. Gather context
+Work from whatever is already in the conversation. If the user passes an issue reference, fetch it and read its full body and comments.
+
+### 2. Explore the codebase (if needed)
+Issue titles and descriptions should use the project's domain glossary vocabulary, and respect ADRs in the area you're touching.
+
+### 3. Draft vertical slices
+Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end — NOT a horizontal slice of one layer.
+
+- Each slice delivers a narrow but COMPLETE path through every layer (schema, API, UI, tests)
+- A completed slice is demoable or verifiable on its own
+- Prefer many thin slices over few thick ones
+- Mark slices as **HITL** (requires human interaction) or **AFK** (can be implemented without human interaction)
+
+### 4. Quiz the user
+Present the breakdown as a numbered list. For each slice show: Title, Type (HITL/AFK), Blocked by, User stories covered.
+
+Ask: Does the granularity feel right? Are dependency relationships correct? Should any slices be merged or split?
+
+### 5. Publish issues
+
+Use this template for each issue:
+
+```
+## What to build
+[Concise description of this vertical slice — end-to-end behavior, not layer-by-layer]
+
+## Acceptance criteria
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Blocked by
+[Issue reference or "None - can start immediately"]
+```
+
+Publish in dependency order (blockers first). Do NOT close or modify any parent issue.

@@ -68,13 +68,9 @@ interface ModelResponse {
   outputTokens?: number;
 }
 
-async function invokeNovaLite(transcript: string): Promise<ModelResponse> {
-  const userContent = transcript.trim()
-    ? `Classify this feedback transcript: "${transcript.trim()}"`
-    : `Classify this feedback transcript: [empty]`;
-
+async function invokeNovaLite(userMessage: string): Promise<ModelResponse> {
   const requestBody = {
-    messages: [{ role: "user", content: [{ text: userContent }] }],
+    messages: [{ role: "user", content: [{ text: userMessage }] }],
     system: [{ text: SYSTEM_PROMPT }],
     inferenceConfig: {
       maxTokens: 120,
@@ -99,16 +95,12 @@ async function invokeNovaLite(transcript: string): Promise<ModelResponse> {
   };
 }
 
-async function invokeHaiku(transcript: string): Promise<ModelResponse> {
-  const userContent = transcript.trim()
-    ? `Classify this feedback transcript: "${transcript.trim()}"`
-    : `Classify this feedback transcript: [empty]`;
-
+async function invokeHaiku(userMessage: string): Promise<ModelResponse> {
   const requestBody = {
     anthropic_version: "bedrock-2023-05-31",
     max_tokens: 120,
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userContent }],
+    messages: [{ role: "user", content: userMessage }],
   };
 
   const command = new InvokeModelCommand({
@@ -133,7 +125,7 @@ async function invokeHaiku(transcript: string): Promise<ModelResponse> {
 
 export async function analyzeTranscript(
   transcript: string,
-  options: { languageHint?: string } = {}
+  options: { languageHint?: string; businessContext?: string } = {}
 ): Promise<AnalysisResult> {
   // Guard: skip LLM for empty/trivially short transcripts
   const safeTranscript = transcript.trim().slice(0, MAX_TRANSCRIPT_CHARS);
@@ -141,8 +133,16 @@ export async function analyzeTranscript(
     return { ...fallbackAnalysis("too_short"), modelUsed: "none" };
   }
 
+  // Build a context-aware user message.
+  // If the partner has set a business_context, prepend it so the model
+  // can produce more relevant topic/sentiment/summary output.
+  const contextPrefix = options.businessContext
+    ? `Business context: ${options.businessContext.trim()}\n\n`
+    : "";
+  const userMessage = `${contextPrefix}Classify this feedback transcript: "${safeTranscript}"`;
+
   try {
-    const { text, inputTokens, outputTokens } = await invokeNovaLite(safeTranscript);
+    const { text, inputTokens, outputTokens } = await invokeNovaLite(userMessage);
     const result = parseAnalysis(text);
 
     if (!result.qualityFlags.includes("parse_error")) {
@@ -155,7 +155,7 @@ export async function analyzeTranscript(
   }
 
   try {
-    const { text, inputTokens, outputTokens } = await invokeHaiku(safeTranscript);
+    const { text, inputTokens, outputTokens } = await invokeHaiku(userMessage);
     const result = parseAnalysis(text);
     return { ...result, modelUsed: "haiku-fallback", inputTokens, outputTokens };
   } catch (err: any) {

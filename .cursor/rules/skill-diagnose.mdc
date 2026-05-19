@@ -1,0 +1,62 @@
+---
+description: Disciplined diagnosis loop for hard bugs and performance regressions. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says "diagnose this" / "debug this", reports a bug, says something is broken/throwing/failing, or describes a performance regression.
+alwaysApply: false
+---
+
+# Diagnose
+
+A discipline for hard bugs. Skip phases only when explicitly justified.
+
+When exploring the codebase, use the project's domain glossary to get a clear mental model of the relevant modules, and check ADRs in the area you're touching.
+
+## Phase 1 — Build a feedback loop
+
+**This is the skill.** Everything else is mechanical. If you have a fast, deterministic, agent-runnable pass/fail signal for the bug, you will find the cause. Spend disproportionate effort here. Be aggressive. Be creative. Refuse to give up.
+
+Ways to construct one (try in order):
+1. Failing test at whatever seam reaches the bug
+2. Curl / HTTP script against a running dev server
+3. CLI invocation with a fixture input, diffing stdout against a known-good snapshot
+4. Headless browser script (Playwright/Puppeteer)
+5. Replay a captured trace
+6. Throwaway harness — minimal subset of the system
+7. Property / fuzz loop — run 1000 random inputs
+8. Bisection harness — `git bisect run`
+9. Differential loop — old vs new version, diff outputs
+10. HITL bash script — last resort
+
+Do NOT proceed to Phase 2 until you have a loop you believe in.
+
+## Phase 2 — Reproduce
+
+Run the loop. Confirm the failure matches what the user described. Confirm it's reproducible.
+
+## Phase 3 — Hypothesise
+
+Generate 3–5 ranked falsifiable hypotheses before testing any. Show the ranked list to the user before testing.
+
+Format: "If X is the cause, then changing Y will make the bug disappear."
+
+## Phase 4 — Instrument
+
+Each probe maps to a specific prediction from Phase 3. Change one variable at a time.
+
+Tag every debug log with a unique prefix e.g. `[DEBUG-a4f2]`. Cleanup = single grep.
+
+## Phase 5 — Fix + regression test
+
+Write the regression test **before** the fix — but only if there is a correct seam for it. If no correct seam exists, note it and flag the architectural issue.
+
+1. Turn minimised repro into a failing test
+2. Watch it fail
+3. Apply the fix
+4. Watch it pass
+5. Re-run the Phase 1 loop against the original scenario
+
+## Phase 6 — Cleanup + post-mortem
+
+- [ ] Original repro no longer reproduces
+- [ ] Regression test passes (or absence of seam documented)
+- [ ] All `[DEBUG-...]` instrumentation removed
+- [ ] Throwaway prototypes deleted
+- [ ] Correct hypothesis stated in commit message

@@ -1,0 +1,57 @@
+---
+inclusion: always
+---
+
+# Measure Every Feature
+
+Hearloop is a portfolio/resume project. Every feature must produce a concrete, quotable improvement — not just "it works".
+
+## The Rule
+
+Before implementing any feature, identify:
+1. **What to measure** — latency, error rate, completion rate, cost, token count, payload size, etc.
+2. **How to measure it** — which API endpoint, DB query, log line, or tool gives the number
+3. **Baseline** — capture the before value first
+4. **Target** — what improvement is expected and why
+
+After implementing, capture the after value and record both in `context/METRICS.md`.
+
+## Format for METRICS.md
+
+```
+## [Feature Name] — [Date]
+- Metric: <what was measured>
+- Before: <X unit>
+- After: <Y unit>
+- Delta: <+/- Z%> or <saved $X/month>
+- How measured: <curl command / SQL query / tool used>
+```
+
+## Examples by category
+
+**Latency**
+- Pipeline end-to-end: `processing_completed_at - processing_started_at` from sessions table
+- Webhook delivery: response time logged in `webhook_deliveries.last_attempted_at`
+
+**Cost**
+- Bedrock per session: `(input_tokens * 0.00000006) + (output_tokens * 0.00000024)`
+- AWS monthly: compare billing console before/after infra changes
+
+**Reliability**
+- Webhook success rate: `SELECT COUNT(*) WHERE status='delivered' / COUNT(*) FROM webhook_deliveries`
+- Session completion rate: `completed / total` from dashboard stats API
+
+**Bundle / performance**
+- Vercel build output shows First Load JS per route — record before/after optimizations
+
+## What to record in every session
+
+At the end of each session that ships a feature, add an entry to `context/METRICS.md`.
+If a baseline doesn't exist yet, create it — even "we don't know yet, measure next session" is valid.
+
+## Do not skip this for
+
+- Any pipeline job change (latency impact)
+- Any infra migration (cost impact)  
+- Any frontend change (bundle size, load time)
+- Any auth/security fix (error rate, failure count)

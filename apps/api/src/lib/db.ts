@@ -72,11 +72,14 @@ export interface PartnersTable {
   id: string;
   name: string;
   email: string | null;
-  password_hash: string | null;  // ADD THIS
+  password_hash: string | null;
   status: "active" | "suspended";
   webhook_url: string | null;
   allowed_origins: string | null;
   default_config_json: string | null;
+  // Plain-text description of the business injected into AI analysis prompts
+  // for more relevant sentiment/topic classification. Set via PATCH /partners/:id/settings.
+  business_context: string | null;
   created_at: Date;
 }
 
