@@ -2,17 +2,18 @@
 //
 // Redis connection strategy (free-tier safe):
 //
-// BullMQ requires SEPARATE IORedis instances for Queues vs Workers.
-// Sharing one connection causes BullMQ to spawn extra internal connections
-// that ignore drainDelay and generate background commands independently.
+// BullMQ requires SEPARATE IORedis instances per Worker.
+// Sharing one connection across workers causes blocking commands (BZPOPMIN,
+// RPOPLPUSH) to interfere with each other, forcing BullMQ to fall back to
+// active polling — which ignores drainDelay and burns Redis commands.
 //
 // Pattern used here:
-//   - Workers get a dedicated `workerConnection` (one shared instance, blocking-command safe)
+//   - Each Worker gets its OWN dedicated IORedis connection via makeWorkerConn()
 //   - Enqueue helpers create a short-lived Queue, add the job, then close it immediately
 //     so no Queue instance stays alive between jobs
 //
 // Idle Redis command budget:
-//   5 workers × drainDelay:600s × ~8 cmds/poll = ~5,760 cmds/day
+//   6 workers × concurrency:1 × drainDelay:600s × ~8 cmds/poll = ~691 cmds/day
 //   Well under the 15K/day safe ceiling (Upstash 500K/month ÷ 30 − headroom)
 
 import { Queue, Worker, Job } from "bullmq";
@@ -23,12 +24,18 @@ const log = jobLogger("queue");
 
 const REDIS_URL = process.env.REDIS_URL!;
 
-// Shared connection for Workers only.
-// maxRetriesPerRequest: null is required by BullMQ for blocking commands.
-export const workerConnection = new IORedis(REDIS_URL, {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-});
+/**
+ * Each Worker must have its own IORedis connection.
+ * BullMQ uses blocking commands (BZPOPMIN, RPOPLPUSH) that monopolise a
+ * connection. Sharing one connection across workers causes them to fall back
+ * to active polling, ignoring drainDelay and burning Upstash quota.
+ */
+function makeWorkerConn(): IORedis {
+  return new IORedis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
+}
 
 // Queue names
 const QUEUE_NAMES = {
@@ -53,6 +60,7 @@ const WORKER_OPTIONS = {
   stalledInterval: 600_000,  // stalled-job check every 10 min (default 30s = 29K cmds/day)
   lockDuration:    120_000,  // job lock lasts 2 min
   drainDelay:      600,      // idle poll every 10 min (default 5s = 691K cmds/day)
+  concurrency:     1,        // 1 per worker — each extra slot adds a polling loop
 } as const;
 
 /**
@@ -90,8 +98,9 @@ async function enqueue(
 }
 
 /**
- * Create a BullMQ Worker using the shared workerConnection.
- * Workers are long-lived — one per job type, started at boot.
+ * Create a BullMQ Worker with its own dedicated IORedis connection.
+ * Each worker gets an isolated connection so blocking commands don't
+ * interfere across workers and drainDelay is respected correctly.
  */
 export function createWorker(
   jobName: JobName,
@@ -103,8 +112,7 @@ export function createWorker(
       await handler(job);
     },
     {
-      connection: workerConnection,
-      concurrency: jobName === "deliver-webhook" ? 5 : 2,
+      connection: makeWorkerConn(),
       ...WORKER_OPTIONS,
     }
   );

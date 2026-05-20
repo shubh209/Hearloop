@@ -15,7 +15,7 @@ import { jobLogger } from "./lib/logger";
 import { sessionRoutes } from "./routes/sessions";
 import { publicRoutes } from "./routes/public";
 import { db } from "./lib/db";
-import { workerConnection, createWorker } from "./lib/queue";
+import { createWorker } from "./lib/queue";
 import { runValidateRecordingJob } from "./jobs/validate-recording";
 import { runTranscribeJob } from "./jobs/transcribe";
 import { runAnalyzeJob } from "./jobs/analyze";
@@ -148,8 +148,7 @@ function startWorkers() {
       webhookWorker.close(),
       expireWorker.close(),
     ]);
-    // Close the shared worker connection last, after all workers are done
-    workerConnection.disconnect();
+    // Each worker closes its own dedicated connection when worker.close() resolves
     process.exit(0);
   };
 
