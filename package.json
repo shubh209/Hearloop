@@ -10,10 +10,14 @@
     "build": "turbo run build"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
     "turbo": "^2.0.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "dotenv": "^17.4.2"
   }
 }
