@@ -217,6 +217,49 @@
 
 ---
 
+## Baseline Pipeline Metrics — May 2026
+
+> First measurement. No prior baseline existed for pipeline performance metrics.
+> Captured via `scripts/capture-metrics.sh` against live Neon instance (n=1 completed session, n=2 total sessions).
+> Note: Pipeline latency of ~101s reflects a session that queued for an extended period before processing — not representative of steady-state performance. Session 7 manual observation (~1.2s) is the more reliable latency baseline.
+
+### Pipeline Latency
+- **Before:** N/A — first measurement
+- **After:** AVG ~100,972 ms | MIN 100,972 ms | MAX 100,972 ms | P95 100,972 ms (n=1 completed session) — see note above; Session 7 observed ~1,200 ms under normal conditions
+- **Delta:** N/A — first measurement
+- **How measured:** `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (processing_completed_at - processing_started_at)) * 1000)::numeric, 0) AS avg_ms, ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ...) ::numeric, 0) AS p95_ms, COUNT(*) AS sample_size FROM sessions WHERE status = 'completed' AND processing_started_at IS NOT NULL AND processing_completed_at IS NOT NULL`
+- **Target:** < 5,000 ms (steady-state)
+
+### Cost Per Session (Bedrock Nova Lite)
+- **Before:** N/A — first measurement
+- **After:** AVG ~$0.0000302 | MIN $0.0000302 | MAX $0.0000302 (AVG 215 input tokens, 72 output tokens) — model: nova-lite
+- **Pricing basis:** $0.06/1M input tokens, $0.24/1M output tokens (Nova Lite)
+- **Delta:** N/A — first measurement
+- **How measured:** `SELECT TO_CHAR(AVG((input_tokens * 0.00000006) + (output_tokens * 0.00000024)), 'FM0.0000000') AS avg_cost_usd FROM analyses WHERE model_used IS NOT NULL`
+- **Target:** < $0.0001 per session
+
+### Webhook Delivery Success Rate
+- **Before:** N/A — first measurement
+- **After:** unknown — no completed delivery attempts recorded (webhook_deliveries table empty)
+- **Delta:** N/A — first measurement
+- **How measured:** `SELECT ROUND(COUNT(*) FILTER (WHERE status = 'delivered') * 100.0 / NULLIF(COUNT(*) FILTER (WHERE status != 'pending'), 0), 1) FROM webhook_deliveries`
+- **Target:** > 95%
+
+### Session Completion Rate
+- **Before:** N/A — first measurement
+- **After:** 50.0% (1 completed / 2 total) — 1 completed, 1 failed
+- **Delta:** N/A — first measurement
+- **How measured:** `SELECT ROUND(COUNT(*) FILTER (WHERE status = 'completed') * 100.0 / NULLIF(COUNT(*), 0), 1) AS completion_rate_pct FROM sessions`
+- **Target:** > 90%
+
+### Frontend Performance (Manual — Out of Scope for Script)
+- **Dashboard Load Time:** Measure via Browser DevTools → Network → DOMContentLoaded (no throttling, production mode)
+- **Vercel First Load JS (dashboard):** Run `cd apps/web && npm run build` and record the `/dashboard` route row
+- **Target:** Load time < 1s, First Load JS < 120 kB
+- **Note:** These metrics are not automated by `scripts/capture-metrics.sh` and must be recorded manually.
+
+---
+
 ## Business Context Injection — May 19, 2026
 
 ### Analysis Relevance

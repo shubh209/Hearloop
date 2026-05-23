@@ -24,6 +24,7 @@ import { runExpireSessionJob } from "./jobs/expire-session";
 import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
 import { partnerRoutes } from "./routes/partners";
+import { healthRoutes } from "./routes/health";
 
 const app = Fastify({ logger: true });
 
@@ -179,7 +180,8 @@ const start = async () => {
    // 2. Routes AFTER rate limit
       await app.register(sessionRoutes, { prefix: "/v1" });
       await app.register(publicRoutes, { prefix: "/v1" });
-      await app.register(partnerRoutes, { prefix: "/v1" }); // ADD THIS
+      await app.register(partnerRoutes, { prefix: "/v1" });
+      await app.register(healthRoutes);
 
       // 3. Listen
       await app.listen({
