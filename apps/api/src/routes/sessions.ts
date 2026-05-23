@@ -176,9 +176,8 @@ export async function sessionRoutes(app: FastifyInstance) {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
       const partner = req.partner;
-      const { mimeType = "audio/webm" } = req.body as {
-        mimeType?: string;
-      };
+      const { mimeType = "audio/webm" } = (req.body as { mimeType?: string }) ?? {};
+
 
       const session = await db
         .selectFrom("sessions")

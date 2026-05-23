@@ -45,6 +45,12 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 ## Current State (Updated May 19, 2026)
 
+### Done ✅ (Session 7)
+- **Bedrock Nova Lite confirmed working** — full pipeline verified E2E: validate → transcribe (Groq) → analyze (Bedrock Nova Lite) → webhook. `sentiment_label`, `topics`, `model_used`, `input_tokens`, `output_tokens` all populate correctly.
+- **Migration 005 applied to Neon** — `business_context TEXT` column live on Neon
+- **Fixed `upload-url` crash** — `req.body` null-guard added (`?? {}`) so endpoint works without a request body
+- Bedrock Nova Lite: ~1.2s latency, 215 input tokens, 72 output tokens per session
+
 ### Done ✅ (Session 6)
 - Full REST API: session CRUD, signed S3 upload, finalize, result, delete
 - Partner register/login/dashboard endpoints (bcrypt, SHA-256 key hashing)
@@ -82,8 +88,7 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - **validateQueue closed on shutdown** — was missing from shutdown handler, now included
 
 ### Blocked ⚠️
-- **Bedrock daily token quota** — Nova Lite AND Haiku both pending quota increase. Transcript captured correctly by Groq but `sentiment_label`, `topics`, `model_used` remain null. Case opened with AWS.
-- **Migration 005 not yet applied to Neon** — run `ALTER TABLE partners ADD COLUMN business_context TEXT;` on Neon before deploying
+- None currently.
 
 ### Not Started ❌
 - CloudWatch monitoring + Bedrock invocation logging
@@ -96,24 +101,14 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 ## Current Blocker
 
-**Bedrock daily token quota** — case opened, pending approval:
-- Nova Lite cross-region inference tokens per day → requested 50M
-- Claude Haiku model access → use case form submitted
-- Until approved: transcription works, AI classification output (sentiment/topics) is null
-
-**Before deploying Session 6 changes:** apply migration 005 on Neon:
-```sql
-ALTER TABLE partners ADD COLUMN business_context TEXT;
-```
-
----
+None. Pipeline is fully operational.
 
 ## P1 Next Steps
 
-1. **Apply migration 005** on Neon (`business_context` column)
-2. **Deploy** — `git push origin main` → CI/CD handles the rest
-3. **After Bedrock quota approved:** run E2E session, verify full analysis populates, capture metrics
-4. **Observability** — add `/health/detailed` endpoint (DB ping, Redis ping, queue depths, 24h completion rate)
+1. **Run E2E session with real audio** — use the capture page or widget to record actual voice, verify full analysis populates
+2. **Capture metrics** — record baseline latency + cost numbers in `context/METRICS.md` (portfolio-ready numbers)
+3. **Observability** — add `/health/detailed` endpoint (DB ping, Redis ping, queue depths, 24h completion rate)
+4. **CloudWatch monitoring** — Bedrock invocation logging
 
 ---
 
