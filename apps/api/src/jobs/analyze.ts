@@ -1,6 +1,7 @@
 // hearloop/apps/api/src/jobs/analyze.ts
 
 import { analyzeTranscript, AnalysisResult } from "../lib/claude";
+import { emitBedrockInvocation } from "../lib/cloudwatch";
 import { db } from "../lib/db";
 import { jobLogger } from "../lib/logger";
 
@@ -41,6 +42,7 @@ export async function runAnalyzeJob(
 
   try {
     // 1. Run Bedrock classification with business context
+    const startTimestamp = Date.now();
     analysis = await analyzeTranscript(transcript, {
       languageHint: languageHint ?? undefined,
       businessContext: businessContext ?? undefined,
@@ -55,6 +57,29 @@ export async function runAnalyzeJob(
       },
       "analysis complete"
     );
+
+    // Fire-and-forget metric emission — never blocks the pipeline
+    if (analysis.modelUsed === "nova-lite" || analysis.modelUsed === "haiku-fallback") {
+      emitBedrockInvocation({
+        modelUsed:      analysis.modelUsed,
+        startTimestamp,
+        inputTokens:    analysis.inputTokens  ?? 0,
+        outputTokens:   analysis.outputTokens ?? 0,
+      }).catch((err: Error) => {
+        log.warn(
+          {
+            sessionId,
+            err: err.message,
+            metric: {
+              modelUsed:    analysis.modelUsed,
+              inputTokens:  analysis.inputTokens,
+              outputTokens: analysis.outputTokens,
+            },
+          },
+          "cloudwatch emit failed — session unaffected"
+        );
+      });
+    }
   } catch (err: any) {
     log.error({ sessionId, err: err.message }, "analysis error");
     await markFailed(sessionId, "analysis_error");

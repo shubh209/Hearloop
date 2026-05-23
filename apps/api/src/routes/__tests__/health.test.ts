@@ -18,6 +18,26 @@ jest.mock('../../lib/db', () => ({
   },
 }));
 
+// Mock kysely's sql tag so sql`SELECT 1`.compile(db) works without real Kysely internals.
+jest.mock('kysely', () => {
+  const actual = jest.requireActual('kysely');
+  const sqlResult = {
+    compile: () => ({ sql: '', parameters: [] }),
+    as: () => sqlResult,
+  };
+  const sqlTag = () => sqlResult;
+  return {
+    ...actual,
+    sql: new Proxy(sqlTag, {
+      get(target, prop) {
+        if (prop === 'raw') return () => sqlResult;
+        return (target as any)[prop];
+      },
+      apply() { return sqlResult; },
+    }),
+  };
+});
+
 const mockPing = jest.fn();
 const mockDisconnect = jest.fn();
 jest.mock('ioredis', () => {
@@ -169,7 +189,7 @@ describe('checkQueues', () => {
   it('returns error when any getJobCounts throws', async () => {
     mockGetJobCounts
       .mockResolvedValueOnce({ waiting: 0 })
-      .mockRejectedValueOnce(new Error('redis timeout'));
+      .mockImplementationOnce(() => { throw new Error('redis timeout'); });
     const result = await checkQueues();
     expect((result as any).status).toBe('error');
     expect((result as any).error).toBe('redis timeout');
@@ -183,7 +203,7 @@ describe('checkQueues', () => {
 
     mockQueueClose.mockReset().mockResolvedValue(undefined);
     mockDisconnect.mockReset();
-    mockGetJobCounts.mockRejectedValue(new Error('fail'));
+    mockGetJobCounts.mockImplementation(() => { throw new Error('fail'); });
     await checkQueues();
     expect(mockQueueClose).toHaveBeenCalledTimes(4);
     expect(mockDisconnect).toHaveBeenCalledTimes(1);
@@ -271,18 +291,64 @@ describe('healthRoutes handler', () => {
     return reply;
   };
 
-  // Helper: run the route handler with mocked check functions
+  beforeEach(() => {
+    // Ensure checkPipeline's db chain returns a valid result by default
+    // (spyOn can't intercept direct function references in the same module)
+    (db as any).selectFrom.mockReturnThis();
+    (db as any).select.mockReturnThis();
+    (db as any).where.mockReturnThis();
+    (db as any).executeTakeFirstOrThrow.mockResolvedValue({
+      total: '2', completed: '2', failed: '0', avg_latency_ms: 1200,
+    });
+    // Ensure checkRedis and checkQueues succeed by default
+    mockPing.mockResolvedValue('PONG');
+    mockGetJobCounts.mockResolvedValue({ waiting: 0 });
+    mockQueueClose.mockResolvedValue(undefined);
+    mockExecuteQuery.mockResolvedValue({});
+  });
+
+  // Helper: run the route handler with controlled mock state
   const runHandler = async (
     dbResult: any,
     redisResult: any,
     queuesResult: any,
     pipelineResult: any
   ) => {
-    // Patch the module-level check functions via jest.spyOn
-    const spyDb = jest.spyOn(require('../health'), 'checkDatabase').mockResolvedValue(dbResult);
-    const spyRedis = jest.spyOn(require('../health'), 'checkRedis').mockResolvedValue(redisResult);
-    const spyQueues = jest.spyOn(require('../health'), 'checkQueues').mockResolvedValue(queuesResult);
-    const spyPipeline = jest.spyOn(require('../health'), 'checkPipeline').mockResolvedValue(pipelineResult);
+    // Set up mocks so the real check functions return the desired results
+    mockExecuteQuery.mockReset();
+    mockPing.mockReset();
+    mockGetJobCounts.mockReset();
+    mockQueueClose.mockReset().mockResolvedValue(undefined);
+    (db as any).executeTakeFirstOrThrow.mockReset();
+    (db as any).selectFrom.mockReturnThis();
+    (db as any).select.mockReturnThis();
+    (db as any).where.mockReturnThis();
+
+    if (dbResult.status === 'ok') {
+      mockExecuteQuery.mockResolvedValue({});
+    } else {
+      mockExecuteQuery.mockImplementation(() => { throw new Error(dbResult.error); });
+    }
+
+    if (redisResult.status === 'ok') {
+      mockPing.mockResolvedValue('PONG');
+    } else {
+      mockPing.mockImplementation(() => { throw new Error(redisResult.error); });
+    }
+
+    if ('status' in queuesResult && queuesResult.status === 'error') {
+      mockGetJobCounts.mockImplementation(() => { throw new Error(queuesResult.error); });
+    } else {
+      mockGetJobCounts.mockResolvedValue({ waiting: 0 });
+    }
+
+    if (pipelineResult.status === 'ok') {
+      (db as any).executeTakeFirstOrThrow.mockResolvedValue({
+        total: '2', completed: '2', failed: '0', avg_latency_ms: 1200,
+      });
+    } else {
+      (db as any).executeTakeFirstOrThrow.mockImplementation(() => { throw new Error(pipelineResult.error ?? 'db error'); });
+    }
 
     const app: any = { get: jest.fn() };
     let capturedHandler: Function = async () => {};
@@ -291,11 +357,6 @@ describe('healthRoutes handler', () => {
     await healthRoutes(app);
     const reply = makeReply();
     await capturedHandler({}, reply);
-
-    spyDb.mockRestore();
-    spyRedis.mockRestore();
-    spyQueues.mockRestore();
-    spyPipeline.mockRestore();
 
     return reply;
   };

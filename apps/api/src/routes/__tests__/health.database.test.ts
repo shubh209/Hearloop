@@ -5,6 +5,14 @@
 
 import { checkDatabase } from '../health';
 
+// Mock kysely's sql tag so sql`SELECT 1`.compile(db) returns a dummy object
+// without needing real Kysely internals on the mock db.
+jest.mock('kysely', () => {
+  const actual = jest.requireActual('kysely');
+  const sqlTag = () => ({ compile: () => ({ sql: 'SELECT 1', parameters: [] }) });
+  return { ...actual, sql: sqlTag };
+});
+
 // Mock the entire lib/db module so db.executeQuery never touches a real DB.
 jest.mock('../../lib/db', () => ({
   db: {

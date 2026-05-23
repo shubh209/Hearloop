@@ -158,12 +158,18 @@ export async function checkQueues(): Promise<QueueDepths | { status: 'error'; er
   );
 
   try {
-    const counts = await Promise.all(
+    const settled = await Promise.allSettled(
       entries.map(({ key, queue }) =>
         queue.getJobCounts().then((c) => ({ key, waiting: c.waiting ?? 0 }))
       )
     );
-    return counts.reduce((acc, { key, waiting }) => ({ ...acc, [key]: waiting }), {} as QueueDepths);
+    const firstError = settled.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    if (firstError) {
+      const reason = firstError.reason;
+      return { status: 'error', error: reason instanceof Error ? reason.message : String(reason) };
+    }
+    return (settled as PromiseFulfilledResult<{ key: keyof QueueDepths; waiting: number }>[])
+      .reduce((acc, { value: { key, waiting } }) => ({ ...acc, [key]: waiting }), {} as QueueDepths);
   } catch (err) {
     return { status: 'error', error: err instanceof Error ? err.message : String(err) };
   } finally {

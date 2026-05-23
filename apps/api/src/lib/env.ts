@@ -13,6 +13,8 @@ const REQUIRED: Record<string, string> = {
   STORAGE_BUCKET:            "S3/R2 bucket name for audio files",
   STORAGE_ACCESS_KEY_ID:     "S3/R2 access key ID",
   STORAGE_SECRET_ACCESS_KEY: "S3/R2 secret access key",
+  CLOUDWATCH_REGION:         "CloudWatch region for Bedrock invocation metrics",
+  CLOUDWATCH_NAMESPACE:      "CloudWatch namespace (e.g. Hearloop/Pipeline)",
 };
 
 // Bedrock credentials may share the same key as storage or have their own

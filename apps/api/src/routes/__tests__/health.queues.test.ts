@@ -114,7 +114,7 @@ describe('checkQueues() — partial failure', () => {
     mockGetJobCounts
       .mockResolvedValueOnce({ waiting: 1 })
       .mockResolvedValueOnce({ waiting: 0 })
-      .mockRejectedValueOnce(new Error(errorMessage))
+      .mockImplementationOnce(() => { throw new Error(errorMessage); })
       .mockResolvedValueOnce({ waiting: 2 });
 
     const result = await checkQueues();
@@ -125,7 +125,7 @@ describe('checkQueues() — partial failure', () => {
   it('returns { status: "error", error: "<message>" } when the first queue throws', async () => {
     const errorMessage = 'Queue not found';
 
-    mockGetJobCounts.mockRejectedValue(new Error(errorMessage));
+    mockGetJobCounts.mockImplementation(() => { throw new Error(errorMessage); });
 
     const result = await checkQueues();
 
@@ -135,7 +135,7 @@ describe('checkQueues() — partial failure', () => {
   it('uses String(err) for non-Error thrown values', async () => {
     mockGetJobCounts
       .mockResolvedValueOnce({ waiting: 0 })
-      .mockRejectedValueOnce('plain string error')
+      .mockImplementationOnce(() => { throw 'plain string error'; })
       .mockResolvedValueOnce({ waiting: 0 })
       .mockResolvedValueOnce({ waiting: 0 });
 
@@ -170,7 +170,7 @@ describe('checkQueues() — cleanup', () => {
   it('calls queue.close() for all four queues when one queue throws', async () => {
     mockGetJobCounts
       .mockResolvedValueOnce({ waiting: 1 })
-      .mockRejectedValueOnce(new Error('boom'))
+      .mockImplementationOnce(() => Promise.reject(new Error('boom')))
       .mockResolvedValueOnce({ waiting: 0 })
       .mockResolvedValueOnce({ waiting: 0 });
 
@@ -180,7 +180,7 @@ describe('checkQueues() — cleanup', () => {
   });
 
   it('calls conn.disconnect() when one queue throws', async () => {
-    mockGetJobCounts.mockRejectedValue(new Error('boom'));
+    mockGetJobCounts.mockImplementation(() => { throw new Error('boom'); });
 
     await checkQueues();
 
@@ -188,7 +188,7 @@ describe('checkQueues() — cleanup', () => {
   });
 
   it('calls conn.disconnect() even when all queues throw', async () => {
-    mockGetJobCounts.mockRejectedValue(new Error('all failed'));
+    mockGetJobCounts.mockImplementation(() => { throw new Error('all failed'); });
 
     await checkQueues();
 
@@ -196,7 +196,7 @@ describe('checkQueues() — cleanup', () => {
   });
 
   it('calls queue.close() for all four queues even when all queues throw', async () => {
-    mockGetJobCounts.mockRejectedValue(new Error('all failed'));
+    mockGetJobCounts.mockImplementation(() => { throw new Error('all failed'); });
 
     await checkQueues();
 
@@ -205,7 +205,7 @@ describe('checkQueues() — cleanup', () => {
 
   it('still calls conn.disconnect() when queue.close() itself throws', async () => {
     mockGetJobCounts.mockResolvedValue({ waiting: 0 });
-    mockClose.mockRejectedValue(new Error('close failed'));
+    mockClose.mockImplementation(() => Promise.reject(new Error('close failed')));
 
     await checkQueues();
 

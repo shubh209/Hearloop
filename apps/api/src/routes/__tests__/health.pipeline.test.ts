@@ -4,6 +4,7 @@
 // Mocks ../lib/db so no real database connection is needed.
 
 import { checkPipeline } from '../health';
+import { db } from '../../lib/db';
 
 // ---------------------------------------------------------------------------
 // Mock the db module
@@ -22,9 +23,9 @@ const mockBuilder = {
   executeTakeFirstOrThrow: mockExecuteTakeFirstOrThrow,
 };
 
-jest.mock('../lib/db', () => ({
+jest.mock('../../lib/db', () => ({
   db: {
-    selectFrom: jest.fn().mockReturnValue(mockBuilder),
+    selectFrom: jest.fn(),
   },
 }));
 
@@ -33,21 +34,22 @@ jest.mock('../lib/db', () => ({
 // SQL string is irrelevant for unit tests.
 jest.mock('kysely', () => {
   const actual = jest.requireActual('kysely');
+  const sqlResult = {
+    compile: () => ({ sql: '', parameters: [] }),
+    as: () => sqlResult,
+  };
+  const sqlTag = () => sqlResult;
   return {
     ...actual,
-    sql: new Proxy(
-      // sql`...` is a tagged template literal
-      function sqlTag(...args: unknown[]) {
-        return { compile: () => ({ sql: '', parameters: [] }) };
+    sql: new Proxy(sqlTag, {
+      get(target, prop) {
+        if (prop === 'raw') return () => sqlResult;
+        return (target as any)[prop];
       },
-      {
-        // sql<T>`...` — the generic overload is just the same function
-        get(target, prop) {
-          if (prop === 'raw') return () => ({ compile: () => '' });
-          return target;
-        },
-      }
-    ),
+      apply(target, thisArg, args) {
+        return sqlResult;
+      },
+    }),
   };
 });
 
@@ -60,6 +62,8 @@ beforeEach(() => {
   // Re-attach the chain after clearAllMocks resets return values
   mockBuilder.select.mockReturnThis();
   mockBuilder.where.mockReturnThis();
+  // Wire selectFrom to return the builder (can't do this in the factory due to hoisting)
+  (db.selectFrom as jest.Mock).mockReturnValue(mockBuilder);
 });
 
 // ---------------------------------------------------------------------------
