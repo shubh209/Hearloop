@@ -452,3 +452,83 @@ describe("Property 6: ModelId dimension mapping", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Unit tests (task 2.4)
+// Validates: Requirements 1.2, 1.4, 2.3
+// ---------------------------------------------------------------------------
+
+describe("Unit tests (task 2.4)", () => {
+  // ── Test 1: Module throws on missing CLOUDWATCH_REGION ──────────────────
+  it("throws on missing CLOUDWATCH_REGION", () => {
+    // Validates: Requirements 1.2
+    const { loadError } = loadCloudwatch({
+      CLOUDWATCH_REGION: undefined,
+      BEDROCK_ACCESS_KEY_ID: "key",
+      BEDROCK_SECRET_ACCESS_KEY: "secret",
+    });
+
+    expect(loadError).toBeDefined();
+    expect(loadError!.message).toContain("CLOUDWATCH_REGION");
+  });
+
+  // ── Test 2: Module does NOT call PutMetricData on import ─────────────────
+  it("does not call PutMetricData (mockSend) on module load", () => {
+    // Validates: Requirements 1.4
+    // mockSend is reset in beforeEach; loadCloudwatch with valid env should
+    // construct the client but never invoke send().
+    loadCloudwatch({
+      CLOUDWATCH_REGION: "us-east-2",
+      BEDROCK_ACCESS_KEY_ID: "key",
+      BEDROCK_SECRET_ACCESS_KEY: "secret",
+    });
+
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  // ── Test 3: nova-lite → ModelId + Outcome = "success" ───────────────────
+  it("emitBedrockInvocation with nova-lite produces correct ModelId and Outcome=success", async () => {
+    // Validates: Requirements 2.3
+    await emitBedrockInvocation({
+      modelUsed: "nova-lite",
+      startTimestamp: 0,
+      inputTokens: 215,
+      outputTokens: 72,
+    });
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+
+    const command: PutMetricDataCommand = mockSend.mock.calls[0][0];
+    const firstDatum = command.input.MetricData![0];
+    const dims = firstDatum.Dimensions!;
+
+    const modelIdDim = dims.find((d) => d.Name === "ModelId")!;
+    const outcomeDim = dims.find((d) => d.Name === "Outcome")!;
+
+    expect(modelIdDim.Value).toBe("us.amazon.nova-lite-v1:0");
+    expect(outcomeDim.Value).toBe("success");
+  });
+
+  // ── Test 4: haiku-fallback → ModelId + Outcome = "fallback" ─────────────
+  it("emitBedrockInvocation with haiku-fallback produces correct ModelId and Outcome=fallback", async () => {
+    // Validates: Requirements 2.3
+    await emitBedrockInvocation({
+      modelUsed: "haiku-fallback",
+      startTimestamp: 0,
+      inputTokens: 215,
+      outputTokens: 72,
+    });
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+
+    const command: PutMetricDataCommand = mockSend.mock.calls[0][0];
+    const firstDatum = command.input.MetricData![0];
+    const dims = firstDatum.Dimensions!;
+
+    const modelIdDim = dims.find((d) => d.Name === "ModelId")!;
+    const outcomeDim = dims.find((d) => d.Name === "Outcome")!;
+
+    expect(modelIdDim.Value).toBe("us.anthropic.claude-haiku-4-5-20251001-v1:0");
+    expect(outcomeDim.Value).toBe("fallback");
+  });
+});

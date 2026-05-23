@@ -34,7 +34,7 @@ interface RecorderProps {
   onSubmitted?: () => void;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://18.223.189.193:3001/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://18-223-189-193.nip.io/v1";
 
 export default function Recorder({
   sessionToken,

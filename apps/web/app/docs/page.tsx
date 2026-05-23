@@ -311,14 +311,14 @@ export async function POST(req: Request) {
             {section === "api" && (
               <>
                 <div className="page-title">REST API</div>
-                <div className="page-sub">Base URL: <span className="tag">http://18.223.189.193:3001/v1</span></div>
+                <div className="page-sub">Base URL: <span className="tag">https://18-223-189-193.nip.io/v1</span></div>
 
                 <Callout type="info">
                   All partner API endpoints require a Bearer token: <span className="tag">Authorization: Bearer sk-live_your_key</span>
                 </Callout>
 
                 <H2>Authentication</H2>
-                <Code lang="bash">{`curl -X POST http://18.223.189.193:3001/v1/sessions \\
+                <Code lang="bash">{`curl -X POST https://18-223-189-193.nip.io/v1/sessions \\
   -H "Authorization: Bearer sk-live_your_key" \\
   -H "Content-Type: application/json" \\
   -d '{ "maxDurationSec": 5 }'`}</Code>

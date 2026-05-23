@@ -34,7 +34,7 @@ Add CloudWatch observability to the Hearloop API in two layers: a new `lib/cloud
     - Do NOT import `lib/logger.ts`
     - _Requirements: 2.2, 2.3, 2.6, 2.7, 4.2, 4.3, 7.1, 7.2, 7.5, 8.4_
 
-  - [ ]* 2.3 Write property tests for `lib/cloudwatch.ts`
+  - [x]* 2.3 Write property tests for `lib/cloudwatch.ts`
     - **Property 1: Missing CLOUDWATCH_REGION causes module load failure** — for any absent or empty-string `CLOUDWATCH_REGION`, importing the module SHALL throw before constructing `CloudWatchClient`
     - **Validates: Requirements 1.2**
     - **Property 2: Credential alias priority resolution** — for any combination of the three access key aliases where at least one is non-empty, the client SHALL be initialised with the value from the highest-priority alias
@@ -48,7 +48,7 @@ Add CloudWatch observability to the Hearloop API in two layers: a new `lib/cloud
     - Use `fast-check` for all property tests; mock `CloudWatchClient.send` to capture emitted payloads
     - Located at `apps/api/src/lib/__tests__/cloudwatch.test.ts`
 
-  - [ ]* 2.4 Write unit tests for `lib/cloudwatch.ts`
+  - [x]* 2.4 Write unit tests for `lib/cloudwatch.ts`
     - Module throws on missing `CLOUDWATCH_REGION` (concrete example)
     - Module does NOT call `PutMetricData` on import
     - `emitBedrockInvocation` with `nova-lite` produces `ModelId = "us.amazon.nova-lite-v1:0"` and `Outcome = "success"`
@@ -83,7 +83,7 @@ Add CloudWatch observability to the Hearloop API in two layers: a new `lib/cloud
     - When `modelUsed === "none"`, do NOT call `emitBedrockInvocation`
     - _Requirements: 2.1, 2.4, 2.5, 4.1, 8.1, 8.2, 8.3_
 
-  - [ ]* 5.2 Write property tests for the emit guard in `jobs/analyze.ts`
+  - [x]* 5.2 Write property tests for the emit guard in `jobs/analyze.ts`
     - **Property 3 (part a): Emit skipped when modelUsed is "none"** — for any job payload where `analyzeTranscript` returns `{ modelUsed: "none" }`, `emitBedrockInvocation` SHALL NOT be called
     - **Validates: Requirements 2.1, 4.2**
     - **Property 3 (part b): Emit called exactly once for success/fallback** — for any `modelUsed` of `"nova-lite"` or `"haiku-fallback"`, `emitBedrockInvocation` SHALL be called exactly once
@@ -91,7 +91,7 @@ Add CloudWatch observability to the Hearloop API in two layers: a new `lib/cloud
     - Use `fast-check` with mocked `analyzeTranscript` and `emitBedrockInvocation`
     - Located at `apps/api/src/jobs/__tests__/analyze.test.ts`
 
-  - [ ]* 5.3 Write unit tests for the emit wiring in `jobs/analyze.ts`
+  - [x]* 5.3 Write unit tests for the emit wiring in `jobs/analyze.ts`
     - Emit failure does NOT throw from `runAnalyzeJob` — session reaches `completed` and webhook is enqueued
     - `warn` log is emitted with `sessionId`, `err.message`, and metric payload when emit fails
     - `log.info("analysis complete")` is called before `emitBedrockInvocation`
@@ -100,8 +100,8 @@ Add CloudWatch observability to the Hearloop API in two layers: a new `lib/cloud
 - [ ] 6. Checkpoint — Ensure all tests pass and pipeline integration is correct
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Create `infra/alarms.sh` for EC2 CPU and memory alarms
-  - [ ] 7.1 Write the infrastructure alarm script
+- [x] 7. Create `infra/alarms.sh` for EC2 CPU and memory alarms
+  - [x] 7.1 Write the infrastructure alarm script
     - Create `infra/alarms.sh` at the repository root (not under `apps/api/src/`)
     - Add `set -euo pipefail` and a usage comment block documenting `INSTANCE_ID` and `SNS_TOPIC_ARN` prerequisites
     - Implement the CPU alarm: `aws cloudwatch put-metric-alarm` targeting `AWS/EC2` namespace, `CPUUtilization` metric, `InstanceId` dimension, threshold `80`, `evaluation-periods 2`, `period 300`, statistic `Average`, `GreaterThanOrEqualToThreshold`, `treat-missing-data missing`, `--alarm-actions` and `--ok-actions` wired to `SNS_TOPIC_ARN`
@@ -111,15 +111,15 @@ Add CloudWatch observability to the Hearloop API in two layers: a new `lib/cloud
     - This file must NOT be imported or called from any code under `apps/api/src/`
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7.3, 7.4_
 
-- [ ] 8. Capture baseline metrics in `context/METRICS.md`
-  - [ ] 8.1 Add the CloudWatch monitoring baseline entry to `context/METRICS.md`
+- [x] 8. Capture baseline metrics in `context/METRICS.md`
+  - [x] 8.1 Add the CloudWatch monitoring baseline entry to `context/METRICS.md`
     - Add the SQL query block for capturing pre-deployment baseline (avg latency, avg input/output tokens, Nova Lite vs Haiku ratio) as specified in the design document
     - Add the metrics table with `Before` column populated from DB query results (or marked `_TBD — run query before deploy_` if no completed sessions exist yet)
     - Add placeholder `After` rows for P50 and P95 `BedrockLatencyMs` to be filled post-deployment
     - Follow the project's standard `context/METRICS.md` format: Metric, Before, After, Delta, How measured
     - _Requirements: 9.1, 9.2, 9.3_
 
-- [ ] 9. Final checkpoint — Ensure all tests pass and smoke checks are clean
+- [x] 9. Final checkpoint — Ensure all tests pass and smoke checks are clean
   - Ensure all tests pass, ask the user if questions arise.
   - Verify `cloudwatch.ts` has no imports from `lib/`, `jobs/`, or `routes/`
   - Verify `cloudwatch.ts` has no `setInterval`, `setTimeout`, or `setImmediate` calls

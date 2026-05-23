@@ -11,8 +11,8 @@ Last updated: May 16, 2026
 | Resource | URL |
 |---|---|
 | Web (Vercel) | https://hearloop.vercel.app |
-| API (EC2) | http://18.223.189.193:3001 |
-| API Health | http://18.223.189.193:3001/health |
+| API (EC2) | https://18-223-189-193.nip.io |
+| API Health | https://18-223-189-193.nip.io/health |
 | API via Vercel proxy | https://hearloop.vercel.app/api/* |
 
 ---

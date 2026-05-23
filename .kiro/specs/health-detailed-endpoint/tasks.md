@@ -106,22 +106,22 @@ Implement `GET /health/detailed` as a single new file `apps/api/src/routes/healt
     - Use `fast-check` to generate a random index (0–3) indicating which check throws an unhandled exception
     - Assert response contains all four check fields; the throwing check has `status: 'error'`; the other three checks are unaffected
 
-- [ ] 7. Checkpoint — Ensure all tests pass
+- [x] 7. Checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 8. Register route in `index.ts`
-  - [ ] 8.1 Add `healthRoutes` import and registration to `apps/api/src/index.ts`
+- [x] 8. Register route in `index.ts`
+  - [x] 8.1 Add `healthRoutes` import and registration to `apps/api/src/index.ts`
     - Add `import { healthRoutes } from './routes/health'` at the top of `index.ts`
     - Add `await app.register(healthRoutes)` after the existing route registrations (no prefix — matches the existing `/health` pattern)
     - _Requirements: 1.1, 7.1_
 
 - [ ] 9. Write unit tests for all four check functions
-  - [ ] 9.1 Write unit tests for `checkDatabase()`
+  - [x] 9.1 Write unit tests for `checkDatabase()`
     - Mock `db.executeQuery` to resolve; verify `{ status: 'ok', latencyMs: n }` where `latencyMs >= 0`
     - Mock `db.executeQuery` to throw; verify `{ status: 'error', error: '<message>', latencyMs: n }`
     - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-  - [ ] 9.2 Write unit tests for `checkRedis()`
+  - [x] 9.2 Write unit tests for `checkRedis()`
     - Mock `IORedis` to return `'PONG'`; verify `{ status: 'ok', latencyMs: n }`
     - Mock to return `'PONG'` with zero elapsed time; verify `ping()` is called twice
     - Mock to return `'LOADING'`; verify `{ status: 'error', error: '...' }`
@@ -129,7 +129,7 @@ Implement `GET /health/detailed` as a single new file `apps/api/src/routes/healt
     - Verify `conn.disconnect()` is called in all cases (success, error, throw)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-  - [ ] 9.3 Write unit tests for `checkQueues()`
+  - [x] 9.3 Write unit tests for `checkQueues()`
     - Mock all four queues to return known counts; verify depth object maps `waiting` correctly
     - Mock one queue to throw; verify `{ status: 'error', error: '<message>' }`
     - Verify `queue.close()` and `conn.disconnect()` are called in all cases
@@ -142,20 +142,20 @@ Implement `GET /health/detailed` as a single new file `apps/api/src/routes/healt
     - Mock `db` to throw; verify `{ status: 'error', error: '<message>' }`
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
 
-  - [ ] 9.5 Write unit tests for the route handler
+  - [x] 9.5 Write unit tests for the route handler
     - All checks ok: verify `status: 'healthy'`, HTTP 200
     - One check errors: verify `status: 'degraded'`, HTTP 200
     - All checks error: verify `status: 'degraded'`, HTTP 200
     - Timeout: mock all checks to never resolve; verify timeout result after 10s
     - _Requirements: 1.2, 1.3, 1.4, 6.2, 6.3_
 
-- [ ] 10. TypeScript build verification
-  - [ ] 10.1 Run `tsc --noEmit` in `apps/api` and fix any type errors
+- [x] 10. TypeScript build verification
+  - [x] 10.1 Run `tsc --noEmit` in `apps/api` and fix any type errors
     - Verify `health.ts` compiles cleanly with no implicit `any`, no missing imports, and no type mismatches
     - Verify `index.ts` compiles cleanly after the `healthRoutes` import and registration are added
     - _Requirements: 7.1, 7.4_
 
-- [ ] 11. Final checkpoint — Ensure all tests pass
+- [x] 11. Final checkpoint — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

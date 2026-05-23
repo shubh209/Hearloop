@@ -307,3 +307,71 @@
 - **After:** 5 workers × ~8 cmds/poll × 144 polls/day (600s interval) = **~5,760 cmds/day**
 - **Delta: ~70% reduction** — well under 15K/day safe ceiling
 - How measured: Upstash dashboard command counter 24h after deploy
+
+---
+
+## CloudWatch Monitoring — May 23, 2026
+
+> Baseline captured from Neon DB before deploying `lib/cloudwatch.ts`.
+> Session 7 manual observation used for latency/token baseline (n=1 completed session;
+> the queued-session outlier of ~101s is excluded as non-representative).
+> "After" values to be filled once CloudWatch is live and ≥5 sessions have processed.
+
+### Pre-deployment baseline SQL
+
+Run against Neon before deploying to populate the Before column:
+
+```sql
+SELECT
+  ROUND(AVG(
+    EXTRACT(EPOCH FROM (s.processing_completed_at - s.processing_started_at)) * 1000
+  )::numeric, 0)                                              AS avg_latency_ms,
+  ROUND(AVG(a.input_tokens)::numeric, 0)                     AS avg_input_tokens,
+  ROUND(AVG(a.output_tokens)::numeric, 0)                    AS avg_output_tokens,
+  COUNT(*) FILTER (WHERE a.model_used = 'nova-lite')         AS nova_lite_count,
+  COUNT(*) FILTER (WHERE a.model_used = 'haiku-fallback')    AS haiku_count,
+  COUNT(*) FILTER (WHERE a.model_used = 'none')              AS failed_count,
+  COUNT(*)                                                    AS total_completed
+FROM analyses a
+JOIN sessions s ON s.id = a.session_id
+WHERE s.status = 'completed'
+  AND s.processing_started_at IS NOT NULL
+  AND s.processing_completed_at IS NOT NULL;
+```
+
+### Bedrock Invocation Metrics
+
+| Metric | Before | After | Delta | How measured |
+|---|---|---|---|---|
+| Avg Bedrock latency (ms) | ~1,200 ms (Session 7 manual observation) | _TBD_ | — | SQL above / CloudWatch `BedrockLatencyMs` |
+| P50 BedrockLatencyMs | — | _TBD_ | — | CloudWatch console, 1-hr window, ≥5 sessions |
+| P95 BedrockLatencyMs | — | _TBD_ | — | CloudWatch console, 1-hr window, ≥5 sessions |
+| Avg input tokens | ~215 tokens | _TBD_ | — | SQL above / CloudWatch `BedrockInputTokens` |
+| Avg output tokens | ~72 tokens | _TBD_ | — | SQL above / CloudWatch `BedrockOutputTokens` |
+| Nova Lite / Haiku ratio | 1 / 0 (100% Nova Lite, n=1) | _TBD_ | — | SQL above / CloudWatch `Outcome` dimension |
+| Cost per session (Nova Lite) | ~$0.0000302 | _TBD_ | — | `(215 × $0.00000006) + (72 × $0.00000024)` |
+
+### Observability Coverage
+
+| Metric | Before | After | Delta | How measured |
+|---|---|---|---|---|
+| Bedrock latency queryable without log parsing | No — logs only | Yes — CloudWatch `BedrockLatencyMs` | 0 → 1 queryable metric | CloudWatch console → Hearloop/Pipeline namespace |
+| Per-model invocation count | No | Yes — `BedrockInvocationCount` + `ModelId` dimension | 0 → 1 | CloudWatch console, filter by `ModelId` |
+| EC2 CPU alarm | No | Yes — `hearloop-ec2-cpu-high` (≥80%, 2×5 min) | 0 → 1 alarm | `aws cloudwatch describe-alarms --alarm-names hearloop-ec2-cpu-high` |
+| EC2 memory alarm | No | Yes — `hearloop-ec2-memory-high` (≥85%, 2×5 min, treat-missing=breaching) | 0 → 1 alarm | `aws cloudwatch describe-alarms --alarm-names hearloop-ec2-memory-high` |
+
+### Post-deployment steps to fill in "After" values
+
+1. SSH to EC2, add env vars, restart container:
+   ```bash
+   echo "CLOUDWATCH_REGION=us-east-2" >> /home/ec2-user/.env
+   echo "CLOUDWATCH_NAMESPACE=Hearloop/Pipeline" >> /home/ec2-user/.env
+   # Ensure IAM user has cloudwatch:PutMetricData permission
+   docker pull <ecr-image> && docker run ...
+   ```
+2. Submit ≥5 real sessions through the pipeline
+3. In CloudWatch console → Metrics → Custom namespaces → `Hearloop/Pipeline`:
+   - Set time range to last 1 hour
+   - Record P50 and P95 for `BedrockLatencyMs`
+4. Update the After column and Delta above
+5. Run `infra/alarms.sh` with `INSTANCE_ID` and `SNS_TOPIC_ARN` to create EC2 alarms

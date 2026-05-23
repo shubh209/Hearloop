@@ -36,8 +36,8 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 | Resource | Value |
 |---|---|
 | Web | https://hearloop.vercel.app |
-| API | http://18.223.189.193:3001 |
-| Health | http://18.223.189.193:3001/health |
+| API | https://18-223-189-193.nip.io |
+| Health | https://18-223-189-193.nip.io/health |
 | GitHub | https://github.com/shubh209/Hearloop |
 | SSH | `ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193` |
 

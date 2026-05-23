@@ -2,7 +2,7 @@
 
 import { NextRequest } from "next/server";
 
-const API_BASE = "http://18.223.189.193:3001";
+const API_BASE = "https://18-223-189-193.nip.io";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
