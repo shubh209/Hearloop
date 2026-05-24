@@ -27,15 +27,11 @@ export default function LoginPage() {
     setError("");
   
     try {
-      const endpoint = mode === "login"
-        ? `${process.env.NEXT_PUBLIC_API_URL}/partners/login`
-        : `${process.env.NEXT_PUBLIC_API_URL}/partners/register`;
-  
       const body = mode === "login"
-        ? { email, password }
-        : { name: company, email, password };
+        ? { mode: "login", email, password }
+        : { mode: "signup", name: company, email, password };
   
-      const res = await fetch(endpoint, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -49,35 +45,22 @@ export default function LoginPage() {
         return;
       }
   
-      // Store session
+      // Store only non-sensitive session info in localStorage.
+      // The API key lives in the httpOnly cookie — JS never sees it.
       localStorage.setItem("hl_session", JSON.stringify({
         partnerId: data.partnerId,
         name: data.name,
-        keyPrefix: data.keyPrefix ?? data.apiKey?.slice(0, 12),
-        apiKey: data.apiKey ?? null, // only present on signup
+        keyPrefix: data.keyPrefix ?? null,
       }));
   
       if (mode === "signup" && data.apiKey) {
-        localStorage.setItem("hl_session", JSON.stringify({
-          partnerId: data.partnerId,
-          name: data.name,
-          apiKey: data.apiKey,
-        }));
+        // Show the one-time key modal. The key is already in the httpOnly cookie.
         setApiKeyModal(data.apiKey);
         setLoading(false);
         return;
-      } else {
-        // Login — ask for API key if not stored
-        const existing = localStorage.getItem("hl_session");
-        const existingParsed = existing ? JSON.parse(existing) : null;
-        
-        localStorage.setItem("hl_session", JSON.stringify({
-          partnerId: data.partnerId,
-          name: data.name,
-          apiKey: existingParsed?.apiKey ?? null, // keep existing key if present
-        }));
-        router.push("/dashboard");
       }
+
+      router.push("/dashboard");
     } catch {
       setError("Network error. Please try again.");
     }

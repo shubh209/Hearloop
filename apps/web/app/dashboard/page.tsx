@@ -43,9 +43,6 @@ export default function DashboardPage() {
   const [realData, setRealData] = useState<any>(null);
   const [dataLoading, setDataLoading] = useState(true);
   const [partnerName, setPartnerName] = useState("Partner");
-  const [missingKey, setMissingKey] = useState(false);
-  const [keyInput, setKeyInput] = useState("");
-  const [keyError, setKeyError] = useState("");
 
   useEffect(() => {
     const s = localStorage.getItem("hl_session");
@@ -54,55 +51,33 @@ export default function DashboardPage() {
     const session = JSON.parse(s);
     if (session.name) setPartnerName(session.name);
 
-    if (!session.partnerId || !session.apiKey) {
-      setMissingKey(true);
-      setDataLoading(false);
+    if (!session.partnerId) {
+      router.push("/login");
       return;
     }
 
+    // API key is in the httpOnly cookie — the proxy injects it automatically.
+    // No need to read it from localStorage or pass it in the Authorization header.
     const fetchDashboard = () =>
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/partners/${session.partnerId}/dashboard`, {
-        headers: { "Authorization": `Bearer ${session.apiKey}` }
-      })
-        .then(r => r.json())
-        .then(data => { setRealData(data); setDataLoading(false); })
+      fetch(`/api/v1/partners/${session.partnerId}/dashboard`)
+        .then(r => {
+          if (r.status === 401) {
+            // Cookie expired or missing — redirect to login
+            router.push("/login");
+            return null;
+          }
+          return r.json();
+        })
+        .then(data => {
+          if (data) { setRealData(data); }
+          setDataLoading(false);
+        })
         .catch(() => setDataLoading(false));
 
     fetchDashboard();
     const interval = setInterval(fetchDashboard, 30_000);
     return () => clearInterval(interval);
   }, [router]);
-
-  const handleSaveKey = async () => {
-    const raw = keyInput.trim();
-    if (!raw.startsWith("sk-live_")) {
-      setKeyError("Key must start with sk-live_");
-      return;
-    }
-    const s = localStorage.getItem("hl_session");
-    if (!s) return;
-    const session = JSON.parse(s);
-    const updated = { ...session, apiKey: raw };
-    localStorage.setItem("hl_session", JSON.stringify(updated));
-    setKeyError("");
-    setDataLoading(true);
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/partners/${session.partnerId}/dashboard`, {
-        headers: { "Authorization": `Bearer ${raw}` }
-      });
-      if (!res.ok) {
-        setKeyError("Invalid key — request returned " + res.status);
-        setDataLoading(false);
-        return;
-      }
-      const data = await res.json();
-      setRealData(data);
-      setMissingKey(false);
-    } catch {
-      setKeyError("Network error. Please try again.");
-    }
-    setDataLoading(false);
-  };
 
   // ── Derived data — real or mock ──
   const sessions = realData?.sessions?.length > 0 ? realData.sessions : MOCK_SESSIONS;
@@ -142,7 +117,8 @@ export default function DashboardPage() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const signOut = () => {
+  const signOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
     localStorage.removeItem("hl_session");
     router.push("/login");
   };
@@ -719,32 +695,6 @@ export default function DashboardPage() {
               <div className="av">AC</div>
             </div>
           </div>
-
-          {missingKey && (
-            <div className="key-banner">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
-                <path d="M8 1.5L14.5 13H1.5L8 1.5Z" stroke="#EF9F27" strokeWidth="1.2" strokeLinejoin="round"/>
-                <path d="M8 6V9M8 11V11.5" stroke="#EF9F27" strokeWidth="1.2" strokeLinecap="round"/>
-              </svg>
-              <div className="key-banner-text">
-                <strong>API key not found in this browser.</strong> Paste your <code style={{fontSize:11,background:"rgba(0,0,0,0.06)",borderRadius:3,padding:"1px 4px"}}>sk-live_</code> key to load real data.
-              </div>
-              <div className="key-banner-input-wrap">
-                <input
-                  className="key-banner-input"
-                  type="password"
-                  placeholder="sk-live_••••••••••••••••••••••••"
-                  value={keyInput}
-                  onChange={e => { setKeyInput(e.target.value); setKeyError(""); }}
-                  onKeyDown={e => e.key === "Enter" && handleSaveKey()}
-                />
-                <button className="key-banner-save" onClick={handleSaveKey}>
-                  Save & load
-                </button>
-              </div>
-              {keyError && <div className="key-banner-err">{keyError}</div>}
-            </div>
-          )}
 
           <div className="content">
             {/* ── DASHBOARD ── */}
