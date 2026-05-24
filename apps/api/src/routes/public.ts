@@ -20,15 +20,18 @@ export async function publicRoutes(app: FastifyInstance) {
       }
 
       try {
-        // 1. Find partner by API key (key is hashed as SHA-256)
+        // 1. Find partner by API key (hash the key, look up via api_keys table)
         const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
-        const partner = await db
-          .selectFrom("partners")
-          .selectAll()
-          .where("id", "=", keyHash)
+        const keyRecord = await db
+          .selectFrom("api_keys")
+          .innerJoin("partners", "partners.id", "api_keys.partner_id")
+          .select(["partners.id as partnerId", "partners.status"])
+          .where("api_keys.key_hash", "=", keyHash)
+          .where("api_keys.revoked_at", "is", null)
+          .where("partners.status", "=", "active")
           .executeTakeFirst();
 
-        if (!partner) {
+        if (!keyRecord) {
           return reply.code(401).send({ error: "Invalid API key" });
         }
 
@@ -40,7 +43,7 @@ export async function publicRoutes(app: FastifyInstance) {
         await db
           .insertInto("session_create_tokens")
           .values({
-            partner_id: partner.id,
+            partner_id: keyRecord.partnerId,
             token,
             expires_at: expiresAt,
             used_at: null,
