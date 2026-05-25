@@ -375,3 +375,29 @@ WHERE s.status = 'completed'
    - Record P50 and P95 for `BedrockLatencyMs`
 4. Update the After column and Delta above
 5. Run `infra/alarms.sh` with `INSTANCE_ID` and `SNS_TOPIC_ARN` to create EC2 alarms
+
+---
+
+## @hearloop/react bundle — May 2026
+
+> New package — no prior baseline. Zero runtime dependencies confirmed: `react` and `react-dom` are external/peer deps only (not bundled).
+
+- Metric: ESM bundle size (gzipped)
+- Before: N/A (new package)
+- After: 5,603 bytes
+- How measured: `gzip -c packages/react/dist/index.mjs | wc -c`
+
+- Metric: CJS bundle size (gzipped)
+- Before: N/A (new package)
+- After: 6,022 bytes
+- How measured: `gzip -c packages/react/dist/index.js | wc -c`
+
+- Metric: TypeScript declaration size
+- Before: N/A (new package)
+- After: 3,229 bytes
+- How measured: `wc -c packages/react/dist/index.d.ts`
+
+- Metric: Runtime dependencies
+- Before: N/A (new package)
+- After: 0 (react and react-dom are external/peer deps — not included in bundle)
+- How measured: Bundle inspection via `tsup.config.ts` `external: ["react", "react-dom"]` + `grep -c "require.*react" packages/react/dist/index.js` → 0 bundled require calls

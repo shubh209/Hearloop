@@ -6,3 +6,12 @@ node_modules/
 .env.example
 *.html
 
+# Build outputs
+**/.next/
+**/dist/
+**/.turbo/
+**/*.tsbuildinfo
+
+# OS
+.DS_Store
+
