@@ -164,7 +164,9 @@ const start = async () => {
     // 1. Rate limit FIRST
     await app.register(rateLimit, {
       max: Number(process.env.RATE_LIMIT_MAX ?? 100),
-      timeWindow: "1 minute",
+      timeWindow: process.env.RATE_LIMIT_WINDOW_MS
+        ? Number(process.env.RATE_LIMIT_WINDOW_MS)
+        : "1 minute",
       keyGenerator: (req: any) => {
         const auth = req.headers["authorization"] ?? "";
         const token = auth.replace("Bearer ", "");
