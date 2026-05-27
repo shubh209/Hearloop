@@ -6,6 +6,12 @@ import { getUploadSignedUrl, deleteAudio } from "../lib/storage";
 import { enqueueValidate, enqueueExpireSession } from "../lib/queue";
 import { randomUUID } from "crypto";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 export async function sessionRoutes(app: FastifyInstance) {
   // POST /sessions — create a new feedback session
   app.post(
@@ -72,6 +78,10 @@ export async function sessionRoutes(app: FastifyInstance) {
       const { id } = req.params as { id: string };
       const partner = req.partner;
 
+      if (!isValidUUID(id)) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
+
       const session = await db
         .selectFrom("sessions")
         .selectAll()
@@ -103,6 +113,10 @@ export async function sessionRoutes(app: FastifyInstance) {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
       const partner = req.partner;
+
+      if (!isValidUUID(id)) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
 
       const session = await db
         .selectFrom("sessions")
@@ -178,6 +192,9 @@ export async function sessionRoutes(app: FastifyInstance) {
       const partner = req.partner;
       const { mimeType = "audio/webm" } = (req.body as { mimeType?: string }) ?? {};
 
+      if (!isValidUUID(id)) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
 
       const session = await db
         .selectFrom("sessions")
@@ -220,6 +237,10 @@ export async function sessionRoutes(app: FastifyInstance) {
         languageHint?: string;
         promptText?: string;
       };
+
+      if (!isValidUUID(id)) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
 
       const session = await db
         .selectFrom("sessions")
@@ -290,6 +311,10 @@ export async function sessionRoutes(app: FastifyInstance) {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
       const partner = req.partner;
+
+      if (!isValidUUID(id)) {
+        return reply.code(400).send({ error: "invalid_id" });
+      }
 
       const session = await db
         .selectFrom("sessions")
