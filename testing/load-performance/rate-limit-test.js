@@ -9,7 +9,7 @@
  *   5. Falls back to IP-based limiting for unauthenticated public routes
  *
  * Strategy:
- *   - Temporarily sets RATE_LIMIT_MAX=10 and RATE_LIMIT_WINDOW_MS=5000 (5s)
+ *   - Temporarily sets RATE_LIMIT_MAX=10 and RATE_LIMIT_WINDOW_MS=15000 (15s)
  *     on EC2 via SSH so tests run in seconds, not minutes
  *   - Restores original values when done (even on failure)
  *   - Uses two real API keys from test-keys.json for isolation test
@@ -34,107 +34,104 @@ const EC2_HOST = 'ec2-user@18.223.189.193';
 const SSH_KEY = path.join(process.env.HOME, '.ssh/hearloop-key.pem');
 const KEYS_FILE = path.join(__dirname, 'test-keys.json');
 
-// Test rate limit settings — small enough to test quickly
 const TEST_MAX = 10;
-const TEST_WINDOW_MS = 8000; // 8 seconds — enough time to send 10 requests cleanly
+const TEST_WINDOW_MS = 15000; // 15 seconds
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
+// ── SSH helper — writes to a temp script to avoid DOCKER_HOST env leaking ────
 function ssh(cmd) {
-  return execSync(
-    `ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} "${cmd}"`,
-    { encoding: 'utf8', timeout: 30000 }
-  ).trim();
+  const tmpScript = `/tmp/hl-rate-test-${Date.now()}.sh`;
+  fs.writeFileSync(tmpScript, `#!/bin/bash\n${cmd}\n`);
+  try {
+    return execSync(
+      `ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${EC2_HOST} 'bash -s' < ${tmpScript}`,
+      { encoding: 'utf8', timeout: 30000 }
+    ).trim();
+  } finally {
+    try { fs.unlinkSync(tmpScript); } catch {}
+  }
 }
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function request(url, options = {}) {
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
+function rawRequest(url, method, headers, body) {
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
-    const reqOptions = {
+    const opts = {
       hostname: urlObj.hostname,
       port: 443,
-      path: urlObj.pathname + (urlObj.search || ''),
-      method: options.method || 'GET',
-      headers: options.headers || {},
+      path: urlObj.pathname,
+      method,
+      headers,
       rejectUnauthorized: false,
     };
-
-    const req = https.request(reqOptions, (res) => {
-      let body = '';
-      res.on('data', (chunk) => (body += chunk));
+    const req = https.request(opts, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
       res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, body: JSON.parse(body) });
-        } catch {
-          resolve({ status: res.statusCode, body });
-        }
+        try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+        catch { resolve({ status: res.statusCode, body: data }); }
       });
     });
-
     req.on('error', reject);
-    if (options.body) req.write(options.body);
+    if (body) req.write(body);
     req.end();
   });
 }
 
-function post(url, body, headers = {}) {
-  const data = JSON.stringify(body);
-  return request(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...headers },
-    body: data,
-  });
+function post(url, bodyObj, extraHeaders = {}) {
+  const data = JSON.stringify(bodyObj);
+  return rawRequest(url, 'POST', {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(data),
+    ...extraHeaders,
+  }, data);
 }
 
-// Send N requests in sequence, return array of status codes
-async function sendRequests(n, url, body, headers = {}, delayMs = 100) {
+function get(url) {
+  return rawRequest(url, 'GET', {}, null);
+}
+
+// Send N requests as fast as possible, return array of status codes
+async function burst(n, fn) {
   const statuses = [];
   for (let i = 0; i < n; i++) {
-    const res = await post(url, body, headers);
+    const res = await fn();
     statuses.push(res.status);
-    if (delayMs > 0) await sleep(delayMs);
   }
   return statuses;
 }
 
-// ── EC2 env management ────────────────────────────────────────────────────────
-
-function setRateLimitOnEC2(max, windowMs) {
+// ── EC2 container management ──────────────────────────────────────────────────
+function applyEnvAndRestart(max, windowMs) {
   console.log(`  Setting RATE_LIMIT_MAX=${max} RATE_LIMIT_WINDOW_MS=${windowMs} on EC2...`);
-  // Update .env file
   ssh(`sed -i '/RATE_LIMIT_MAX/d' /home/ec2-user/.env && echo 'RATE_LIMIT_MAX=${max}' >> /home/ec2-user/.env`);
   ssh(`sed -i '/RATE_LIMIT_WINDOW_MS/d' /home/ec2-user/.env && echo 'RATE_LIMIT_WINDOW_MS=${windowMs}' >> /home/ec2-user/.env`);
-  // Restart container to pick up new env
-  ssh('docker restart hearloop-api');
-  console.log('  Waiting 10s for container to restart...');
+  ssh(`docker stop hearloop-api || true && docker rm hearloop-api || true && IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep hearloop-api | head -1) && docker run -d --name hearloop-api --env-file /home/ec2-user/.env -p 3001:3001 --restart unless-stopped $IMAGE`);
 }
 
-function restoreRateLimitOnEC2() {
-  console.log('  Restoring RATE_LIMIT_MAX=100 and removing RATE_LIMIT_WINDOW_MS...');
+function restoreEnvAndRestart() {
+  console.log('  Restoring RATE_LIMIT_MAX=100, removing RATE_LIMIT_WINDOW_MS...');
   ssh(`sed -i '/RATE_LIMIT_MAX/d' /home/ec2-user/.env && echo 'RATE_LIMIT_MAX=100' >> /home/ec2-user/.env`);
   ssh(`sed -i '/RATE_LIMIT_WINDOW_MS/d' /home/ec2-user/.env`);
-  ssh('docker restart hearloop-api');
-  console.log('  Waiting 10s for container to restart...');
+  ssh(`docker stop hearloop-api || true && docker rm hearloop-api || true && IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep hearloop-api | head -1) && docker run -d --name hearloop-api --env-file /home/ec2-user/.env -p 3001:3001 --restart unless-stopped $IMAGE`);
 }
 
-async function waitForHealthy(maxWaitMs = 20000) {
+async function waitForHealthy(maxMs = 25000) {
   const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
+  while (Date.now() - start < maxMs) {
     try {
-      const res = await request(HEALTH_URL);
-      if (res.status === 200 && res.body?.status === 'ok') return true;
+      const res = await get(HEALTH_URL);
+      if (res.status === 200 && res.body?.status === 'ok') return;
     } catch {}
     await sleep(1000);
   }
   throw new Error('API did not become healthy within timeout');
 }
 
-// ── Test runner ───────────────────────────────────────────────────────────────
-
+// ── Assertions ────────────────────────────────────────────────────────────────
 let passed = 0;
 let failed = 0;
 
@@ -148,129 +145,147 @@ function assert(condition, message) {
   }
 }
 
+// ── Tests ─────────────────────────────────────────────────────────────────────
 async function runTests(apiKey1, apiKey2) {
-  const createTokenUrl = `${BASE_URL}/public/sessions/create-token`;
+  const tokenUrl = `${BASE_URL}/public/sessions/create-token`;
 
-  // ── Test 1: API key bucket — allows exactly MAX requests ──────────────────
+  // ── Test 1: API key bucket allows exactly MAX requests ────────────────────
   console.log('\n  Test 1: API key bucket allows exactly MAX requests');
-  const statuses1 = await sendRequests(
-    TEST_MAX,
-    createTokenUrl,
-    { apiKey: apiKey1 },
-    {},
-    150 // 150ms between requests — well within the 8s window
-  );
-  const allPassed = statuses1.every((s) => s === 200);
-  assert(allPassed, `First ${TEST_MAX} requests all return 200 (got: ${statuses1.join(',')})`);
+  const t1 = await burst(TEST_MAX, () => post(tokenUrl, { apiKey: apiKey1 }));
+  assert(t1.every((s) => s === 200), `All ${TEST_MAX} requests return 200 (got: ${t1.join(',')})`);
 
-  // ── Test 2: (MAX+1)th request returns 429 ─────────────────────────────────
+  // ── Test 2: (MAX+1)th request returns 429 ────────────────────────────────
   console.log('\n  Test 2: (MAX+1)th request returns 429');
-  const res429 = await post(createTokenUrl, { apiKey: apiKey1 });
-  assert(res429.status === 429, `Request ${TEST_MAX + 1} returns 429 (got: ${res429.status})`);
+  const t2 = await post(tokenUrl, { apiKey: apiKey1 });
+  assert(t2.status === 429, `Request ${TEST_MAX + 1} returns 429 (got: ${t2.status})`);
   assert(
-    res429.body?.statusCode === 429 || res429.body?.error === 'Too Many Requests',
-    `Response body indicates rate limit (got: ${JSON.stringify(res429.body)})`
+    t2.body?.statusCode === 429 || t2.body?.error === 'Too Many Requests',
+    `Response body confirms rate limit (got: ${JSON.stringify(t2.body)})`
   );
 
-  // ── Test 3: Window reset — wait for window to expire, then retry ──────────
+  // ── Test 3: Window resets after TEST_WINDOW_MS ────────────────────────────
   console.log(`\n  Test 3: Window resets after ${TEST_WINDOW_MS}ms`);
-  console.log(`    Waiting ${TEST_WINDOW_MS + 1000}ms for window to expire...`);
-  await sleep(TEST_WINDOW_MS + 1000);
+  console.log(`    Waiting ${TEST_WINDOW_MS + 2000}ms...`);
+  await sleep(TEST_WINDOW_MS + 2000);
+  const t3 = await post(tokenUrl, { apiKey: apiKey1 });
+  assert(t3.status === 200, `Request succeeds after window reset (got: ${t3.status})`);
 
-  const resAfterReset = await post(createTokenUrl, { apiKey: apiKey1 });
-  assert(resAfterReset.status === 200, `Request succeeds after window reset (got: ${resAfterReset.status})`);
+  // ── Test 4: Key isolation — authenticated routes have independent buckets ──
+  // NOTE: create-token is a PUBLIC endpoint — no Bearer token in the request,
+  // so the keyGenerator falls back to req.ip for ALL create-token calls.
+  // Key isolation only applies to AUTHENTICATED routes (Bearer token present).
+  // We test isolation using POST /sessions which requires Bearer auth.
+  console.log('\n  Test 4: Authenticated routes have independent rate limit buckets per API key');
+  console.log(`    Waiting ${TEST_WINDOW_MS + 2000}ms for clean window...`);
+  await sleep(TEST_WINDOW_MS + 2000);
 
-  // ── Test 4: Key isolation — two keys have independent buckets ─────────────
-  console.log('\n  Test 4: Two API keys have independent rate limit buckets');
+  // First get session-create tokens for both keys (uses IP bucket — do sequentially)
+  const tokenRes1 = await post(tokenUrl, { apiKey: apiKey1 });
+  const tokenRes2 = await post(tokenUrl, { apiKey: apiKey2 });
 
-  // Exhaust key1's bucket again
-  await sendRequests(TEST_MAX, createTokenUrl, { apiKey: apiKey1 }, {}, 150);
-  const key1Exhausted = await post(createTokenUrl, { apiKey: apiKey1 });
-  assert(key1Exhausted.status === 429, `Key1 is rate limited after ${TEST_MAX} requests`);
+  if (tokenRes1.status !== 200 || tokenRes2.status !== 200) {
+    console.log(`    ⚠️  Could not get session tokens (${tokenRes1.status}, ${tokenRes2.status}) — skipping isolation test`);
+    assert(false, 'Could not get session tokens for isolation test');
+    return;
+  }
 
-  // Key2 should still work — it has its own bucket
-  const key2Res = await post(createTokenUrl, { apiKey: apiKey2 });
-  assert(key2Res.status === 200, `Key2 is NOT rate limited (independent bucket) (got: ${key2Res.status})`);
+  const sct1 = tokenRes1.body.sessionCreateToken;
+  const sct2 = tokenRes2.body.sessionCreateToken;
 
-  // Wait for window to reset before IP test
-  console.log(`\n    Waiting ${TEST_WINDOW_MS + 1000}ms for window reset before IP test...`);
-  await sleep(TEST_WINDOW_MS + 1000);
+  // Exhaust Key1's bucket on POST /public/sessions (authenticated with Bearer sct1)
+  // The keyGenerator sees the Bearer token and uses sct1.slice(0,16) as the bucket key
+  const sessUrl = `${BASE_URL}/public/sessions`;
+  const sessBody = { promptText: 'rate limit test', maxDurationSec: 5 };
+
+  // Send MAX requests with sct1 — exhausts sct1's bucket
+  // Note: each token is single-use, so we need MAX tokens for Key1
+  // Instead, test with the API key directly on an authenticated route
+  // Use GET /sessions/:id with a fake UUID — returns 404 but still counts against the bucket
+  const authUrl = `${BASE_URL}/sessions/00000000-0000-0000-0000-000000000000`;
+  const t4k1 = await burst(TEST_MAX, () =>
+    rawRequest(authUrl, 'GET', { Authorization: `Bearer ${apiKey1}` }, null)
+  );
+  // All should be 401 (invalid key for sessions route) or 404 — not 429 yet
+  const k1NotRateLimited = t4k1.every((s) => s !== 429);
+  assert(k1NotRateLimited, `Key1: first ${TEST_MAX} authenticated requests not rate limited (got: ${t4k1.join(',')})`);
+
+  // (MAX+1)th with Key1 should be 429
+  const t4k1last = await rawRequest(authUrl, 'GET', { Authorization: `Bearer ${apiKey1}` }, null);
+  assert(t4k1last.status === 429, `Key1: (MAX+1)th request returns 429 (got: ${t4k1last.status})`);
+
+  // Key2 with its own Bearer token should NOT be rate limited
+  const t4k2 = await rawRequest(authUrl, 'GET', { Authorization: `Bearer ${apiKey2}` }, null);
+  console.log(`    Key2 response: ${t4k2.status}`);
+  assert(t4k2.status !== 429, `Key2 has independent bucket, not rate limited (got: ${t4k2.status})`);
 
   // ── Test 5: IP-based limiting for unauthenticated requests ────────────────
+  // NOTE: /health is registered BEFORE the rate limit plugin in Fastify boot
+  // order, so it is intentionally exempt. We use /v1/public/sessions/create-token
+  // with no Authorization header — keyGenerator returns req.ip as fallback.
   console.log('\n  Test 5: IP-based rate limiting for unauthenticated public routes');
-  // Send MAX requests with no auth (falls back to IP bucket)
-  const ipStatuses = await sendRequests(
-    TEST_MAX,
-    createTokenUrl,
-    { apiKey: 'invalid-key-triggers-ip-bucket' }, // invalid key → 401, but still counts against IP
-    {},
-    150
-  );
-  // All should get 401 (invalid key) but NOT 429 yet
-  const noRateLimitYet = ipStatuses.every((s) => s === 401);
-  assert(noRateLimitYet, `First ${TEST_MAX} unauthenticated requests return 401 not 429 (got: ${ipStatuses.join(',')})`);
+  console.log(`    Waiting ${TEST_WINDOW_MS + 2000}ms for clean window...`);
+  await sleep(TEST_WINDOW_MS + 2000);
 
-  // The (MAX+1)th should be 429 (IP bucket exhausted)
-  const ipRes429 = await post(createTokenUrl, { apiKey: 'invalid-key-triggers-ip-bucket' });
-  assert(
-    ipRes429.status === 429,
-    `(MAX+1)th unauthenticated request returns 429 via IP bucket (got: ${ipRes429.status})`
+  // Send MAX requests with no Authorization header — falls back to IP bucket
+  // These return 400 (missing apiKey) but still consume the IP rate limit counter
+  const t5 = await burst(TEST_MAX, () =>
+    rawRequest(tokenUrl, 'POST', { 'Content-Type': 'application/json', 'Content-Length': '2' }, '{}')
   );
+  assert(t5.every((s) => s === 400), `First ${TEST_MAX} unauthenticated requests return 400 not 429 (got: ${t5.join(',')})`);
+
+  // (MAX+1)th should be 429 — IP bucket exhausted
+  const t5last = await rawRequest(tokenUrl, 'POST', { 'Content-Type': 'application/json', 'Content-Length': '2' }, '{}');
+  assert(t5last.status === 429, `(MAX+1)th unauthenticated request returns 429 via IP bucket (got: ${t5last.status})`);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-
 async function main() {
   console.log('╔══════════════════════════════════════════╗');
   console.log('║     Rate Limiter Correctness Tests       ║');
   console.log('╚══════════════════════════════════════════╝');
 
-  // Load test keys
   if (!fs.existsSync(KEYS_FILE)) {
     console.error('test-keys.json not found. Run setup-test-partners.js first.');
     process.exit(1);
   }
   const keys = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
   if (keys.length < 2) {
-    console.error('Need at least 2 test partners in test-keys.json for isolation test.');
+    console.error('Need at least 2 test partners in test-keys.json.');
     process.exit(1);
   }
   const [key1, key2] = keys;
-  console.log(`\nUsing partners: ${key1.email} and ${key2.email}`);
+  console.log(`\nUsing: ${key1.email} and ${key2.email}`);
 
-  // Set test rate limit on EC2
   console.log('\n── Setting up EC2 rate limit config ──');
-  setRateLimitOnEC2(TEST_MAX, TEST_WINDOW_MS);
-  await sleep(10000);
+  applyEnvAndRestart(TEST_MAX, TEST_WINDOW_MS);
+  console.log('  Waiting 15s for container to start...');
+  await sleep(15000);
   await waitForHealthy();
-  console.log('  ✅ API healthy with test rate limit config');
+  console.log('  ✅ API healthy with test config');
 
   let testError = null;
   try {
     await runTests(key1.apiKey, key2.apiKey);
   } catch (err) {
     testError = err;
-    console.error('\n  ❌ Unexpected error during tests:', err.message);
+    console.error('\n  ❌ Unexpected error:', err.message);
   } finally {
-    // Always restore — even if tests fail
     console.log('\n── Restoring EC2 rate limit config ──');
-    restoreRateLimitOnEC2();
-    await sleep(10000);
+    restoreEnvAndRestart();
+    console.log('  Waiting 15s for container to start...');
+    await sleep(15000);
     await waitForHealthy();
-    console.log('  ✅ API healthy with restored rate limit (100/min)');
+    console.log('  ✅ API healthy with restored config (100/min)');
   }
 
-  // Results
   console.log('\n╔══════════════════════════════════════════╗');
-  console.log(`║  Results: ${passed} passed, ${failed} failed${' '.repeat(28 - String(passed).length - String(failed).length)}║`);
+  console.log(`║  Results: ${passed} passed, ${failed} failed${' '.repeat(Math.max(0, 27 - String(passed).length - String(failed).length))}║`);
   console.log('╚══════════════════════════════════════════╝');
 
-  if (testError || failed > 0) {
-    process.exit(1);
-  }
+  if (testError || failed > 0) process.exit(1);
 }
 
 main().catch((err) => {
-  console.error('Fatal error:', err);
+  console.error('Fatal:', err.message);
   process.exit(1);
 });
