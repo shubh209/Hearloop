@@ -62,7 +62,7 @@ jobs:
 
       - name: Build and push
         run: |
-          docker build --platform linux/amd64 \
+          docker build --platform linux/amd64 --no-cache \
             -f apps/api/Dockerfile \
             -t 652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest \
             .
