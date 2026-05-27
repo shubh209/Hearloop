@@ -15,3 +15,14 @@ node_modules/
 # OS
 .DS_Store
 
+# Load test data — contain API keys and session tokens, never commit
+testing/load-performance/test-keys.json
+testing/load-performance/test-tokens.json
+
+# Load test run results — generated output, not source
+testing/load-performance/results/*.json
+
+# ZAP generated reports — large binary/HTML, use zap-summary.md instead
+testing/vulnerability-security/zap-results/zap-report.html
+testing/vulnerability-security/zap-results/zap-report.json
+
