@@ -19,7 +19,7 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 | Layer | Tech |
 |---|---|
-| Backend | Node.js 20, TypeScript, Fastify 4 (`apps/api`) |
+| Backend | Node.js 20, TypeScript, Fastify **5** (`apps/api`) |
 | Frontend | Next.js 15 App Router, React 19 (`apps/web`) |
 | Database | PostgreSQL 16 via Kysely + `pg` → **Neon (serverless, free tier)** |
 | Queue | BullMQ + ioredis → **Upstash Redis (serverless, free tier)** |
@@ -43,7 +43,44 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 
 ---
 
-## Current State (Updated May 19, 2026)
+## Current State (Updated May 27, 2026)
+
+### Done ✅ (Session 8 — Testing, Security & SDK)
+
+#### @hearloop/react npm package
+- **Published-ready React SDK** — `packages/react/` with 6 single-responsibility source files
+- `useHearloop` hook + `HearloopWidget` component, CJS + ESM + `.d.ts`, 5.6 KB gzipped ESM
+- **72 tests passing** — unit + 8 property-based tests (fast-check, 100 runs each)
+- Zero runtime dependencies; `"use client"` directive on all files for Next.js App Router
+
+#### Security hardening
+- **UUID validation** on all `:id` route params — returns 400 instead of leaking DB error on injection attempts
+- **Server header suppressed** — `header -Server` in Caddyfile removes `server: Caddy` response header
+- **Docker CVEs reduced 46 → 0 runtime** — upgraded fastify v4→v5, @fastify/rate-limit v8→v10, kysely v0.27→v0.28.17, next v15.0→v15.5.18, turbo v2.0→v2.9.14
+- **devDependencies excluded from production image** — Dockerfile `prod-deps` stage uses `--omit=dev`
+- **RATE_LIMIT_MAX and RATE_LIMIT_WINDOW_MS** now configurable via env vars (was hardcoded)
+
+#### Load & Performance Testing (k6)
+- **Smoke test** — 19/19 checks, full 8-step session flow verified
+- **Load test** — 200 concurrent users, 149ms p95, 0% errors (with pre-generated tokens + RATE_LIMIT_MAX=10000)
+- **Stress test** — 50→400 VUs, 0 server crashes, rate limiter working correctly
+- **Spike test** — 500 instant users, 1.19% errors, full recovery in <10s
+
+#### Rate Limit Correctness Tests
+- **9/9 tests passing** — API key bucket, 429 on MAX+1, window reset, key isolation, IP bucket
+- Key insight: `create-token` is a public endpoint (IP bucket); authenticated routes use key prefix bucket
+
+#### Soak Test (20 VUs × 10 min)
+- **p95 latency: 116ms flat** throughout — no degradation, no memory leaks
+- E2E: 1.9s min, 3.9s max, consistent
+
+#### Vulnerability & Security
+- **OWASP ZAP baseline** — 65 checks passed, 0 failures
+- **Manual security checks** — SSRF, SQL injection, auth, CORS all verified
+- **ZAP active scan script** ready — `testing/vulnerability-security/zap-active-scan.js`
+
+#### Uptime Monitoring
+- **3 monitors live on Better Uptime** — API health, detailed health, Vercel frontend
 
 ### Done ✅ (Session 7)
 - **Bedrock Nova Lite confirmed working** — full pipeline verified E2E: validate → transcribe (Groq) → analyze (Bedrock Nova Lite) → webhook. `sentiment_label`, `topics`, `model_used`, `input_tokens`, `output_tokens` all populate correctly.
@@ -91,11 +128,8 @@ Target: automotive service, healthcare, hospitality, retail — anywhere in-pers
 - None currently.
 
 ### Not Started ❌
-- CloudWatch monitoring + Bedrock invocation logging
-- Custom domain + SSL on EC2 (currently proxied via Vercel)
-- Dashboard real-data E2E test (blocked by Bedrock quota)
-- npm package / React SDK wrapper
-- Observability endpoint (`/health/detailed` with DB/Redis/queue depth checks)
+- Dashboard real-data E2E test (manual — run capture flow end-to-end)
+- ZAP active scan execution (script written, needs `npm run build --workspace=apps/api` first)
 
 ---
 
@@ -105,10 +139,8 @@ None. Pipeline is fully operational.
 
 ## P1 Next Steps
 
-1. **Run E2E session with real audio** — use the capture page or widget to record actual voice, verify full analysis populates
-2. **Capture metrics** — record baseline latency + cost numbers in `context/METRICS.md` (portfolio-ready numbers)
-3. **Observability** — add `/health/detailed` endpoint (DB ping, Redis ping, queue depths, 24h completion rate)
-4. **CloudWatch monitoring** — Bedrock invocation logging
+1. **Manual E2E test** — sign up → record audio → verify dashboard shows transcript, sentiment, topics
+2. **ZAP active scan** — run `node testing/vulnerability-security/zap-active-scan.js` (needs local build first)
 
 ---
 
@@ -160,7 +192,29 @@ packages/db/migrations/
   002_partner_auth.sql           — email + password_hash columns
   003_metrics_columns.sql        — model_used, input/output_tokens, processing timestamps
   004_session_create_tokens.sql  — session_create_tokens table for token-based auth
-  005_business_context.sql       — business_context TEXT column on partners (⚠️ not yet applied to Neon)
+  005_business_context.sql       — business_context TEXT column on partners
+```
+
+## Testing Suite
+
+```
+testing/
+  load-performance/
+    smoke.js                  — 1 VU, full 8-step session flow, 19/19 checks
+    load.js                   — 200 VUs × 1 iteration, pre-generated tokens
+    stress.js                 — 50→400 VUs, finds breaking point
+    spike.js                  — 500 instant users, tests recovery
+    soak.js                   — 20 VUs × 10 min, detects memory leaks
+    rate-limit-test.js        — 9 correctness tests for rate limiter
+    setup-test-partners.js    — registers N test partners, writes test-keys.json
+    generate-tokens.js        — pre-generates session-create tokens
+    cleanup-test-partners.js  — deletes test partners + sessions from DB
+  vulnerability-security/
+    audit-results.md          — full security audit findings
+    zap-active-scan.js        — ZAP active + authenticated scan script
+    zap-results/zap-summary.md — ZAP baseline scan results (65 pass, 0 fail)
+  uptime-monitoring/
+    README.md                 — Better Uptime setup (3 monitors live)
 ```
 
 ---

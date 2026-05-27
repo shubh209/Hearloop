@@ -401,3 +401,42 @@ WHERE s.status = 'completed'
 - Before: N/A (new package)
 - After: 0 (react and react-dom are external/peer deps — not included in bundle)
 - How measured: Bundle inspection via `tsup.config.ts` `external: ["react", "react-dom"]` + `grep -c "require.*react" packages/react/dist/index.js` → 0 bundled require calls
+
+---
+
+## Load Testing & Security Hardening — May 27, 2026
+
+### Load Test (200 concurrent users)
+- **Metric:** p95 request latency under 200 simultaneous users
+- **Result:** 149ms p95 — well under 3,000ms threshold
+- **E2E flow p90:** 6,543ms (includes Neon cold start from auto-pause)
+- **Error rate:** 0% (with pre-generated tokens, RATE_LIMIT_MAX=10000)
+- **How measured:** k6 `per-vu-iterations` executor, 200 VUs × 1 iteration
+
+### Spike Test (500 instant users)
+- **Metric:** Error rate and recovery time under sudden traffic burst
+- **Result:** 1.19% errors at peak (TCP connection limit on t3.micro), full recovery in <10s
+- **How measured:** k6 stages: 0→500 in 10s, hold 30s, drop to 0, 1min recovery window
+
+### Soak Test (20 VUs × 10 minutes)
+- **Metric:** p95 latency stability over sustained load (memory leak / connection exhaustion detection)
+- **Result:** 116ms p95 flat throughout — no degradation
+- **E2E:** 1.9s min, 3.9s max, 3.9s p95 — consistent
+- **How measured:** k6 `constant-vus` executor, 20 VUs, 10 min duration
+
+### Rate Limit Correctness
+- **Metric:** Rate limiter correctness (allows MAX, blocks MAX+1, resets, isolates per key)
+- **Result:** 9/9 tests passing
+- **How measured:** `node testing/load-performance/rate-limit-test.js` against live EC2 with RATE_LIMIT_MAX=10, RATE_LIMIT_WINDOW_MS=15000
+
+### Docker CVE Reduction
+- **Before:** 46 vulnerabilities (28 high, 12 medium, 6 low) in Docker Scout
+- **After:** 0 runtime vulnerabilities (16 remaining are in build-time layers only, not present in runner image)
+- **Delta: -100% runtime CVEs**
+- **How measured:** `docker scout cves` on production ECR image
+- **Packages upgraded:** fastify v4→v5, @fastify/rate-limit v8→v10, kysely v0.27→v0.28.17, next v15.0→v15.5.18, turbo v2.0→v2.9.14
+
+### OWASP ZAP Baseline Scan
+- **Result:** 65 checks passed, 0 failures, 2 low-severity warnings (on 404 pages only)
+- **How measured:** `docker run ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://18-223-189-193.nip.io`
+- **Full report:** `testing/vulnerability-security/zap-results/zap-summary.md`
