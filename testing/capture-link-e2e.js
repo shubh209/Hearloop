@@ -38,12 +38,17 @@ function fakeWebmAudio() {
 const jsonHeaders = { "Content-Type": "application/json" };
 
 async function api(method, path, { body, token } = {}) {
+  const headers = {};
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
-    headers: {
-      ...jsonHeaders,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers,
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const data = await res.json().catch(() => ({}));
