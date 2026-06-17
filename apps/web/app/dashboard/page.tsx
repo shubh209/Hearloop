@@ -124,6 +124,35 @@ export default function DashboardPage() {
     return true;
   });
 
+  // By-Target aggregation (Phase 1 — grouped client-side from session metadata).
+  const targetGroups = (() => {
+    const map = new Map<
+      string,
+      { label: string; total: number; positive: number; rated: number; urgent: number }
+    >();
+    for (const s of sessions) {
+      const key = s.target?.key ?? "__unattributed";
+      const label = s.target?.label ?? "Unattributed";
+      let g = map.get(key);
+      if (!g) {
+        g = { label, total: 0, positive: 0, rated: 0, urgent: 0 };
+        map.set(key, g);
+      }
+      g.total += 1;
+      if (s.sentiment) {
+        g.rated += 1;
+        if (s.sentiment === "positive") g.positive += 1;
+      }
+      if (s.urgency === "urgent") g.urgent += 1;
+    }
+    return Array.from(map.values())
+      .map((g) => ({
+        ...g,
+        positivePct: g.rated > 0 ? Math.round((g.positive / g.rated) * 100) : null,
+      }))
+      .sort((a, b) => b.total - a.total);
+  })();
+
   const copyKey = () => {
     const s = localStorage.getItem("hl_session");
     const key = s ? JSON.parse(s).apiKey ?? "sk-live_••••••••" : "sk-live_••••••••";
@@ -848,13 +877,43 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* LOCATIONS / TARGETS — populated once per-location capture links ship */}
+                {/* BY TARGET — grouped from capture-link attribution (location / service / product) */}
                 <div className="card">
-                  <div className="ch"><div className="ct">Location &amp; target performance</div></div>
-                  <div style={{color:"var(--ink-3)",fontSize:12,padding:"20px 0",textAlign:"center"}}>
-                    Per-location and per-target breakdowns appear here once you create
-                    capture links for each location or service.
-                  </div>
+                  <div className="ch"><div className="ct">By target</div></div>
+                  {targetGroups.length === 0 ? (
+                    <div style={{color:"var(--ink-3)",fontSize:12,padding:"20px 0",textAlign:"center"}}>
+                      {dataLoading
+                        ? "Loading…"
+                        : "No feedback yet. Create a capture link per location or service to see breakdowns here."}
+                    </div>
+                  ) : (
+                    <table className="sess-table">
+                      <thead>
+                        <tr>
+                          <th>Target</th>
+                          <th>Sessions</th>
+                          <th>Positive</th>
+                          <th>Urgent</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {targetGroups.map((g) => (
+                          <tr key={g.label}>
+                            <td style={{fontWeight:500,color:"var(--ink)"}}>{g.label}</td>
+                            <td style={{color:"var(--ink-3)"}}>{g.total}</td>
+                            <td style={{fontWeight:500, color: g.positivePct === null ? "var(--ink-3)" : g.positivePct >= 60 ? "var(--green)" : g.positivePct >= 40 ? "var(--ink-2)" : "var(--red)"}}>
+                              {g.positivePct === null ? "—" : `${g.positivePct}%`}
+                            </td>
+                            <td>
+                              {g.urgent > 0
+                                ? <span className="pill pu">{g.urgent} urgent</span>
+                                : <span className="pill pnu">none</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </>
             )}

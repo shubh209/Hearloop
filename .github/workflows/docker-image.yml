@@ -88,6 +88,10 @@ jobs:
               -p 3001:3001 \
               --restart unless-stopped \
               652892608187.dkr.ecr.us-east-2.amazonaws.com/hearloop-api:latest
+            # Reclaim disk: each --no-cache deploy orphans the previous image.
+            # Prune everything not used by the running container so the 20 GB
+            # root volume can't fill up (it did, at 55 images / ~14 GB).
+            docker image prune -af
 
       - name: Health check
         run: |
