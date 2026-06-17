@@ -11,7 +11,7 @@ interface CapturePageProps {
 async function getSessionConfig(token: string) {
   try {
     const res = await fetch(
-      `${serverApiBase()}/public/session/${token}`,
+      `${await serverApiBase()}/public/session/${token}`,
       { cache: "no-store" }
     );
     if (!res.ok) return null;

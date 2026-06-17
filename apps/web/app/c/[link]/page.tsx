@@ -15,7 +15,7 @@ interface CaptureLinkPageProps {
 async function mintSession(linkToken: string): Promise<{ sessionToken: string } | null> {
   try {
     const res = await fetch(
-      `${serverApiBase()}/public/capture/${linkToken}/session`,
+      `${await serverApiBase()}/public/capture/${linkToken}/session`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
