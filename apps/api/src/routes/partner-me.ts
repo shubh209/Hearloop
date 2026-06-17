@@ -4,6 +4,19 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { db } from "../lib/db";
 import { createApiKeyForPartner } from "../lib/create-api-key";
 import { buildDashboardPayload } from "./partner-dashboard";
+import {
+  assertPublicHttpsUrl,
+  SsrfBlockedError,
+} from "../lib/assert-public-https-url";
+
+const BUSINESS_CONTEXT_SOURCES = [
+  "manual",
+  "template",
+  "import",
+  "import_edited",
+] as const;
+
+type BusinessContextSource = (typeof BUSINESS_CONTEXT_SOURCES)[number];
 
 export async function partnerMeRoutes(app: FastifyInstance) {
   const auth = [app.authenticatePartner];
@@ -33,6 +46,8 @@ export async function partnerMeRoutes(app: FastifyInstance) {
         partnerId: partner.id,
         name: partner.name,
         businessContext: partner.businessContext,
+        websiteUrl: partner.websiteUrl,
+        businessContextSource: partner.businessContextSource,
         allowedOrigins: partner.allowedOrigins,
         webhookUrl: partner.webhookUrl,
         embedKeyPrefix: embedKey?.key_prefix ?? null,
@@ -60,6 +75,8 @@ export async function partnerMeRoutes(app: FastifyInstance) {
         webhookUrl?: string | null;
         allowedOrigins?: string | null;
         businessContext?: string | null;
+        websiteUrl?: string | null;
+        businessContextSource?: BusinessContextSource | null;
       };
 
       if (body.webhookUrl !== undefined && body.webhookUrl !== null) {
@@ -93,6 +110,23 @@ export async function partnerMeRoutes(app: FastifyInstance) {
         body.allowedOrigins = origins.join(",");
       }
 
+      if (body.businessContextSource !== undefined && body.businessContextSource !== null) {
+        if (!BUSINESS_CONTEXT_SOURCES.includes(body.businessContextSource)) {
+          return reply.code(400).send({ error: "invalid_business_context_source" });
+        }
+      }
+
+      if (body.websiteUrl !== undefined && body.websiteUrl !== null && body.websiteUrl.trim()) {
+        try {
+          assertPublicHttpsUrl(body.websiteUrl.trim());
+        } catch (err) {
+          if (err instanceof SsrfBlockedError) {
+            return reply.code(400).send({ error: err.code, message: err.message });
+          }
+          return reply.code(400).send({ error: "invalid_website_url" });
+        }
+      }
+
       const updates: Record<string, unknown> = {};
       if (body.webhookUrl !== undefined) updates["webhook_url"] = body.webhookUrl;
       if (body.allowedOrigins !== undefined) {
@@ -102,6 +136,12 @@ export async function partnerMeRoutes(app: FastifyInstance) {
         updates["business_context"] = body.businessContext
           ? body.businessContext.trim().slice(0, 500)
           : null;
+      }
+      if (body.websiteUrl !== undefined) {
+        updates["website_url"] = body.websiteUrl?.trim() || null;
+      }
+      if (body.businessContextSource !== undefined) {
+        updates["business_context_source"] = body.businessContextSource;
       }
 
       if (Object.keys(updates).length === 0) {

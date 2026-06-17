@@ -1,0 +1,69 @@
+{
+  "mode": "http_only",
+  "total": 5,
+  "passed": 5,
+  "success_rate": 1.0,
+  "p95_latency_ms": 572,
+  "results": [
+    {
+      "url": "https://www.jiffylube.com/",
+      "ok": true,
+      "latency_ms": 646,
+      "status_code": 200,
+      "html_chars": 88870,
+      "markdown_chars": 16848,
+      "title": "Quick Oil Changes, Tires & More | Jiffy Lube",
+      "automotive_signals": 122,
+      "excerpt": "[Skip to main content](https://www.jiffylube.com/#) [![Jiffy Lube logo](https://jiffylube-assets1.imgix.net/img/jiffy-lube.svg?auto=format,compress&fit=max&w=136)](https://www.jiffylube.com/) 15 Minute Oil Change Service 15 Minute   Oil Cha",
+      "error": null
+    },
+    {
+      "url": "https://www.vioc.com/",
+      "ok": true,
+      "latency_ms": 370,
+      "status_code": 200,
+      "html_chars": 87526,
+      "markdown_chars": 6863,
+      "title": "Automotive Maintenance Services - Valvoline Instant Oil Change",
+      "automotive_signals": 58,
+      "excerpt": "Download our app  **CUSTOMER SERVICE**   M-F 8:00 AM - 9:00 PM (Eastern Time)   Sat 8:00 AM \u2013 8:00 PM (Eastern Time)   except holidays ## TAKE ADVANTAGE OF THESE SUMMER SAVINGS! Offer details:  Includes up to 5 quarts of Valvoline\u2122 motor oi",
+      "error": null
+    },
+    {
+      "url": "https://www.midas.com/",
+      "ok": true,
+      "latency_ms": 363,
+      "status_code": 200,
+      "html_chars": 435787,
+      "markdown_chars": 26672,
+      "title": "Midas Is the Best | Auto Repair & Service Done Right",
+      "automotive_signals": 408,
+      "excerpt": "[Skip to main content](https://www.midas.com/#content) Find a StoreMy Store [ ](https://www.midas.com/) Menu MENUX [Request Appointment](https://www.midas.com/bookappointment.aspx)[Get Coupons & Offers](https://www.midas.com/coupons.aspx)[S",
+      "error": null
+    },
+    {
+      "url": "https://www.meineke.com/",
+      "ok": true,
+      "latency_ms": 459,
+      "status_code": 200,
+      "html_chars": 382208,
+      "markdown_chars": 8462,
+      "title": "Auto Repair, Car Mechanics & Maintenance Services | Meineke",
+      "automotive_signals": 41,
+      "excerpt": "[Skip to main content](https://www.meineke.com/#main-content)[Skip to footer](https://www.meineke.com/#footer) Sign In / Join My Meineke: Loading...   * [ Careers (opens in a new tab) ](https://meineke-careers.careerplug.com/jobs)   * [Blog",
+      "error": null
+    },
+    {
+      "url": "https://www.pepboys.com/",
+      "ok": true,
+      "latency_ms": 572,
+      "status_code": 200,
+      "html_chars": 278254,
+      "markdown_chars": 41659,
+      "title": "Tire Shop, Auto Repair, Service & Maintenance | Pep Boys",
+      "automotive_signals": 327,
+      "excerpt": "[Skip to main content](https://www.pepboys.com/#skip-to-content) Navigation Menu Click to open or close the main navigation menu [ ](https://www.pepboys.com/) [ 0 Shopping Cart Icon View items in your shopping cart ](https://www.pepboys.com",
+      "error": null
+    }
+  ]
+}

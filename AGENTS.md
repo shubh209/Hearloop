@@ -49,7 +49,17 @@ Both are fully supported; we lead with the in-person surface because it matches 
 
 ---
 
-## Current State (Updated Jun 16, 2026)
+## Current State (Updated Jun 17, 2026)
+
+
+
+### Done ✅ (Session 10 — Business context import, Crawl4AI HTTP-only)
+
+- Added Partner-initiated business-context import: `POST /partners/me/business-context/import` + polling `GET /partners/me/business-context/import/:importId` (BullMQ returnvalue status model).
+- Added dedicated import queue + worker (`hearloop-import-context`, concurrency 1) with 3 imports/partner/hour and 409 guard for concurrent imports.
+- Added Crawl4AI sidecar (`services/scraper/`) in HTTP-only mode with DNS/public-IP checks, plus API client + Bedrock summarizer (`lib/scrape-via-crawl4ai.ts`, `lib/summarize-business-context.ts`).
+- Added migration 009 (`website_url`, `business_context_source`) and wired onboarding/settings UI to import → pre-fill → explicit Save flow (no silent DB write from job).
+- Applied migration 009 to Neon project `divine-cherry-94715192` default branch.
 
 ### Done ✅ (Session 9 — Direction A: in-person capture + real dashboard)
 
@@ -173,6 +183,7 @@ None. Pipeline operational on the new Redis instance; Direction-A capture loop i
 1. **Live QR capture E2E against prod** — create a capture link in the dashboard, scan it, record, verify the By-Target view updates
 2. **Target Phase 2** — promote `metadata_json` Target to the `feedback_targets` table when the merge UI is needed
 3. **ZAP active scan** — run `node testing/vulnerability-security/zap-active-scan.js` (needs local build first)
+4. **Business-context import live validation** — run 5+ real partner URLs through onboarding/import and capture success/failure breakdown
 
 ---
 
@@ -205,12 +216,17 @@ apps/api/src/
   routes/partner-dashboard.ts — buildDashboardPayload (stats, topics, sessions incl. target)
   routes/capture-links.ts     — authed /partners/me/capture-links create/list/deactivate
   routes/health.ts      — /health/detailed (cached 60s, waiting-only queue counts)
+  routes/business-context-import.ts — import enqueue + status polling endpoints
   lib/env.ts            — startup env var validation
   lib/logger.ts         — shared Pino logger + jobLogger(name) child helper
   lib/claude.ts         — Bedrock Nova Lite + Haiku fallback; injects businessContext into prompt
   lib/groq.ts           — Whisper transcription wrapper
   lib/queue.ts          — BullMQ queues + workers (drainDelay:600, stalledInterval:600000) + enqueue helpers
   lib/storage.ts        — S3 signed URL helpers
+  lib/scrape-via-crawl4ai.ts — sidecar client for website markdown
+  lib/summarize-business-context.ts — Bedrock import summarizer
+  lib/import-rate-limit.ts — per-partner import throttle (3/hour)
+  lib/import-job-status.ts — BullMQ status lookup for import polling
   lib/target-key.ts     — normalizeTargetKey() for stable Target grouping
   lib/db.ts             — Kysely + pg; includes CaptureLinksTable
   jobs/validate-recording.ts  — MIME/size validation
@@ -218,6 +234,7 @@ apps/api/src/
   jobs/analyze.ts       — fetches partner business_context → Bedrock → update analysis → enqueueWebhook
   jobs/deliver-webhook.ts     — HMAC webhook + SSRF guard + retries
   jobs/expire-session.ts      — cleans up expired sessions on a schedule
+  jobs/import-business-context.ts — scrape + summarize + return draft context
 
 apps/web/
   app/login/page.tsx         — login/signup + API key reveal modal on signup
@@ -226,6 +243,7 @@ apps/web/
   app/c/[link]/page.tsx      — capture-link entry: mints a session, forwards to /capture/[token]
   components/Recorder.tsx     — voice recorder with origin validation
   components/CaptureLinksPanel.tsx — create capture links, copy URL, QR generate/download
+  components/BusinessContextImport.tsx — shared import UI block (onboarding + settings)
   components/EmbedSettingsPanel.tsx / ApiSettingsPanel.tsx — settings tabs
   public/widget.js           — embeddable widget (token-based session creation)
 
@@ -237,6 +255,7 @@ packages/db/migrations/
   005_business_context.sql       — business_context TEXT column on partners
   006_api_key_types.sql          — api_keys.type (public embed vs secret)
   007_capture_links.sql          — capture_links table (durable QR/SMS entry points)
+  009_business_context_import.sql — website_url + business_context_source on partners
 ```
 
 ## Testing Suite
@@ -279,12 +298,14 @@ PATCH  /partners/:id/settings             Bearer API key
 
 GET    /partners/me                       partner session  — profile, key prefixes
 GET    /partners/me/dashboard             partner session  — stats, topics, sessions (incl. target)
-PATCH  /partners/me/settings              partner session  — webhook_url, allowed_origins, business_context
+PATCH  /partners/me/settings              partner session  — webhook_url, allowed_origins, business_context, website_url, business_context_source
 POST   /partners/me/embed/regenerate      partner session  — rotate public embed key
 POST   /partners/me/secret-keys           partner session  — mint a secret key
 POST   /partners/me/capture-links         partner session  — create a capture link (optional Target)
 GET    /partners/me/capture-links         partner session  — list active capture links
 DELETE /partners/me/capture-links/:id     partner session  — deactivate a capture link
+POST   /partners/me/business-context/import partner session — enqueue website import
+GET    /partners/me/business-context/import/:importId partner session — poll import status
 
 POST   /sessions                          Bearer API key
 GET    /sessions/:id                      Bearer API key
@@ -306,7 +327,7 @@ POST   /public/capture/:linkToken/session public — mint a session from a durab
 
 ---
 
-## Business Context Flow (Session 6)
+## Business Context Flow (Session 10)
 
 Partners set a plain-text description of their business via `PATCH /partners/:id/settings`:
 ```json
@@ -319,6 +340,11 @@ Business context: Automotive service center...
 Classify this feedback transcript: "the wait was too long"
 ```
 Falls back gracefully to context-free analysis if `business_context` is null.
+
+Partners can now import a draft context from their website:
+- `POST /partners/me/business-context/import` enqueues an import job (3/hour per partner, 409 if one is already running)
+- `GET /partners/me/business-context/import/:importId` polls BullMQ job status
+- On completion, the UI pre-fills text and the partner confirms with `PATCH /partners/me/settings` (no silent DB write from job)
 
 ---
 

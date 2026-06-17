@@ -20,11 +20,13 @@ import { runTranscribeJob } from "./jobs/transcribe";
 import { runAnalyzeJob } from "./jobs/analyze";
 import { runDeliverWebhookJob } from "./jobs/deliver-webhook";
 import { runExpireSessionJob } from "./jobs/expire-session";
+import { runImportBusinessContextJob } from "./jobs/import-business-context";
 import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
 import { partnerRoutes } from "./routes/partners";
 import { partnerMeRoutes } from "./routes/partner-me";
 import { captureLinkRoutes } from "./routes/capture-links";
+import { businessContextImportRoutes } from "./routes/business-context-import";
 import { healthRoutes } from "./routes/health";
 import {
   authenticatePartner,
@@ -84,6 +86,11 @@ function startWorkers() {
     await runExpireSessionJob(job.data);
   });
 
+  const importWorker = createWorker("import-business-context", async (job: Job) => {
+    workerLog.info({ jobId: job.id, partnerId: job.data.partnerId }, "import job started");
+    return runImportBusinessContextJob(job.data);
+  });
+
   const shutdown = async () => {
     app.log.info("Shutting down workers...");
     await Promise.all([
@@ -92,6 +99,7 @@ function startWorkers() {
       analyzeWorker.close(),
       webhookWorker.close(),
       expireWorker.close(),
+      importWorker.close(),
     ]);
     // Each worker closes its own dedicated connection when worker.close() resolves
     process.exit(0);
@@ -129,6 +137,7 @@ const start = async () => {
       await app.register(partnerRoutes, { prefix: "/v1" });
       await app.register(partnerMeRoutes, { prefix: "/v1" });
       await app.register(captureLinkRoutes, { prefix: "/v1" });
+      await app.register(businessContextImportRoutes, { prefix: "/v1" });
       await app.register(healthRoutes);
 
       // 3. Listen

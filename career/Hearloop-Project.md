@@ -82,6 +82,16 @@ Use one set per resume version. Each bullet is past tense, ends with a plain bus
 
 Interview detail for AI bullets (not on the resume line): Groq Whisper for speech to text; Nova Lite primary with Haiku on parse failure; company context is prompt text, not RAG.
 
+### Business-context import (optional swap-in bullets)
+
+Use these when you want Session 10 work emphasized in interviews.
+
+1. Built a partner initiated website import flow with TypeScript, Fastify, BullMQ, and AWS Bedrock that drafts business context in under one poll cycle so owners set up relevant AI feedback labels without writing prompt text from scratch.
+
+2. Implemented SSRF-safe HTTPS crawling with Python, FastAPI, Docker, and DNS/IP validation for Crawl4AI sidecar requests so teams can enrich AI context from public sites without opening private network risk.
+
+3. Ran a production-like scraping spike with Crawl4AI, EC2, and k6-style measurement discipline that achieved 5 of 5 successful automotive homepage imports at 572ms p95 local latency so the feature shipped with defendable performance data instead of assumptions.
+
 ## Verified metrics
 
 Measured in this project (safe to defend in interviews if you describe the test setup):
@@ -94,6 +104,7 @@ Rate limit tests: nine of nine passing
 Docker runtime CVEs in prod image: forty six to zero
 OWASP ZAP baseline: sixty five of sixty five checks passed
 React SDK: seventy two tests passing, 5.6 KB gzipped ESM bundle
+Business context import spike: five of five successful automotive homepage imports, 572ms p95 local, 358ms on EC2 Docker
 
 Estimates only (product potential, not live customer proof):
 

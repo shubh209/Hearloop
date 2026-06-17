@@ -8,6 +8,13 @@ export interface PartnerContext {
   webhookUrl: string | null;
   allowedOrigins: string | null;
   businessContext: string | null;
+  websiteUrl: string | null;
+  businessContextSource:
+    | "manual"
+    | "template"
+    | "import"
+    | "import_edited"
+    | null;
 }
 
 export async function loadPartnerById(
@@ -21,6 +28,8 @@ export async function loadPartnerById(
       "webhook_url",
       "allowed_origins",
       "business_context",
+      "website_url",
+      "business_context_source",
       "status",
     ])
     .where("id", "=", partnerId)
@@ -35,5 +44,7 @@ export async function loadPartnerById(
     webhookUrl: row.webhook_url,
     allowedOrigins: row.allowed_origins,
     businessContext: row.business_context ?? null,
+    websiteUrl: row.website_url ?? null,
+    businessContextSource: row.business_context_source ?? null,
   };
 }

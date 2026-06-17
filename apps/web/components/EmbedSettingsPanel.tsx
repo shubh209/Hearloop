@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  BusinessContextImportBlock,
+  BusinessContextSource,
+  resolveBusinessContextSource,
+} from "./BusinessContextImport";
 
 type PartnerProfile = {
   allowedOrigins: string | null;
   embedKeyPrefix: string | null;
   businessContext: string | null;
+  websiteUrl: string | null;
+  businessContextSource: BusinessContextSource | null;
 };
 
 export function EmbedSettingsPanel() {
   const [profile, setProfile] = useState<PartnerProfile | null>(null);
   const [allowedOrigins, setAllowedOrigins] = useState("");
   const [businessContext, setBusinessContext] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [source, setSource] = useState<BusinessContextSource>("manual");
+  const importDraftRef = useRef<string | null>(null);
   const [embedKeyOnce, setEmbedKeyOnce] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -25,6 +35,8 @@ export function EmbedSettingsPanel() {
         setProfile(data);
         setAllowedOrigins(data.allowedOrigins ?? "");
         setBusinessContext(data.businessContext ?? "");
+        setWebsiteUrl(data.websiteUrl ?? "");
+        setSource(data.businessContextSource ?? "manual");
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -37,12 +49,22 @@ export function EmbedSettingsPanel() {
   const saveSettings = async () => {
     setSaving(true);
     setError("");
+    const resolvedSource = businessContext.trim()
+      ? resolveBusinessContextSource(
+          businessContext.trim(),
+          importDraftRef.current,
+          source
+        )
+      : null;
+
     const res = await fetch("/api/partners/me/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         allowedOrigins: allowedOrigins.trim() || null,
         businessContext: businessContext.trim() || null,
+        websiteUrl: websiteUrl.trim() || null,
+        businessContextSource: resolvedSource,
       }),
     });
     setSaving(false);
@@ -115,25 +137,16 @@ export function EmbedSettingsPanel() {
         onChange={(e) => setAllowedOrigins(e.target.value)}
       />
 
-      <label style={{ fontSize: 11, fontWeight: 500, color: "var(--ink-3)" }}>
-        Business context (optional, improves AI topics)
-      </label>
-      <textarea
-        style={{
-          width: "100%",
-          marginTop: 6,
-          marginBottom: 14,
-          minHeight: 90,
-          padding: "10px 12px",
-          borderRadius: 8,
-          border: "0.5px solid var(--paper-3)",
-          fontSize: 13,
-        }}
-        value={businessContext}
-        onChange={(e) => setBusinessContext(e.target.value)}
+      <BusinessContextImportBlock
+        websiteUrl={websiteUrl}
+        onWebsiteUrlChange={setWebsiteUrl}
+        businessContext={businessContext}
+        onBusinessContextChange={setBusinessContext}
+        onSourceChange={setSource}
+        importDraftRef={importDraftRef}
       />
 
-      <div style={{ marginBottom: 14 }}>
+      <div style={{ marginBottom: 14, marginTop: 14 }}>
         <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6 }}>
           Widget embed key{" "}
           {profile?.embedKeyPrefix ? (

@@ -81,6 +81,13 @@ export interface PartnersTable {
   // Plain-text description of the business injected into AI analysis prompts
   // for more relevant sentiment/topic classification. Set via PATCH /partners/:id/settings.
   business_context: string | null;
+  website_url: string | null;
+  business_context_source:
+    | "manual"
+    | "template"
+    | "import"
+    | "import_edited"
+    | null;
   created_at: Date;
 }
 

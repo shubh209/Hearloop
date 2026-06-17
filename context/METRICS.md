@@ -41,6 +41,26 @@
 - After: 18% (~17 GB free); `docker image prune -af` added to the deploy step so it can't recur
 - How measured: `df -h /` on EC2 before/after `docker image prune`; prune step in `.github/workflows/docker-image.yml`
 
+### Crawl4AI HTTP-only spike — Jun 17, 2026
+- Metric: import success rate on 5 national automotive homepages (HTTP-only, no browser)
+- Before: N/A (not measured)
+- After: **100%** (5/5); p95 latency **572ms** local, **358ms** EC2 Docker (1 URL)
+- Delta: exceeds >80% target; well under 15s p95 target
+- How measured: `python testing/spike/crawl4ai-http-spike.py` (Crawl4AI 0.8.9 `AsyncHTTPCrawlerStrategy`); EC2: `python:3.11-slim` Docker with `--memory=512m`
+- Report: `testing/spike/SPIKE_REPORT.md`
+
+---
+
+
+### Business-context import baseline (Jun 17, 2026)
+- Metric: onboarding completion with non-null `business_context` sourced from import
+- Before: Pending baseline (feature just shipped; no production import samples yet)
+- After: Pending first 10 production import attempts
+- Target: >80% successful imports on partner homepages
+- How measured: import job outcomes via `GET /partners/me/business-context/import/:importId` + Neon query on `partners.business_context_source`
+
+---
+
 ### Capture-link attribution E2E (API, Jun 17 2026)
 - Metric: % of minted sessions with non-null Target on dashboard payload
 - Before: N/A (feature new)

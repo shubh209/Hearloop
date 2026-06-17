@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  BusinessContextImportBlock,
+  BusinessContextSource,
+  resolveBusinessContextSource,
+} from "../../components/BusinessContextImport";
 
 const AUTOMOTIVE_TEMPLATE =
   "Quick-service automotive shop. Common visits: oil change, tire rotation, brake service. " +
@@ -11,21 +16,39 @@ const AUTOMOTIVE_TEMPLATE =
 export default function OnboardingPage() {
   const router = useRouter();
   const [businessContext, setBusinessContext] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [source, setSource] = useState<BusinessContextSource>("manual");
+  const importDraftRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const saveContext = async (context: string | null) => {
+  const saveContext = async (
+    context: string | null,
+    sourceOverride?: BusinessContextSource
+  ) => {
     setLoading(true);
     setError("");
+    const resolvedSource = context
+      ? resolveBusinessContextSource(
+          context,
+          importDraftRef.current,
+          sourceOverride ?? source
+        )
+      : null;
+
     try {
       const res = await fetch("/api/partners/me/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ businessContext: context }),
+        body: JSON.stringify({
+          businessContext: context,
+          websiteUrl: websiteUrl.trim() || null,
+          businessContextSource: resolvedSource,
+        }),
       });
       if (!res.ok) {
         const data = await res.json();
-        setError(data.error ?? "Failed to save");
+        setError(data.error ?? data.message ?? "Failed to save");
         setLoading(false);
         return;
       }
@@ -36,6 +59,13 @@ export default function OnboardingPage() {
     }
   };
 
+  const useTemplate = () => {
+    importDraftRef.current = null;
+    setSource("template");
+    setBusinessContext(AUTOMOTIVE_TEMPLATE);
+    void saveContext(AUTOMOTIVE_TEMPLATE, "template");
+  };
+
   return (
     <>
       <style>{`
@@ -43,7 +73,6 @@ export default function OnboardingPage() {
         .card { max-width: 520px; width: 100%; background: white; border: 0.5px solid var(--paper-3); border-radius: 12px; padding: 28px; }
         h1 { font-family: var(--font-display); font-size: 22px; margin-bottom: 8px; }
         p { font-size: 13px; color: var(--ink-3); line-height: 1.5; margin-bottom: 20px; }
-        textarea { width: 100%; min-height: 120px; border: 0.5px solid var(--paper-3); border-radius: 8px; padding: 12px; font-size: 13px; resize: vertical; }
         .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
         .btn { padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; }
         .btn-primary { background: var(--green); color: white; }
@@ -53,14 +82,19 @@ export default function OnboardingPage() {
       <div className="card">
         <h1>Tell us about your business</h1>
         <p>
-          Optional. This helps Hearloop label topics and sentiment correctly (e.g.
-          wait time at a service shop vs a restaurant).
+          Optional. Paste your website to auto-draft a description, or type it
+          yourself. This helps Hearloop label topics and sentiment correctly.
         </p>
-        <textarea
-          placeholder="What does your business do? What do customers usually visit for?"
-          value={businessContext}
-          onChange={(e) => setBusinessContext(e.target.value)}
+
+        <BusinessContextImportBlock
+          websiteUrl={websiteUrl}
+          onWebsiteUrlChange={setWebsiteUrl}
+          businessContext={businessContext}
+          onBusinessContextChange={setBusinessContext}
+          onSourceChange={setSource}
+          importDraftRef={importDraftRef}
         />
+
         <div className="actions">
           <button
             className="btn btn-primary"
@@ -72,7 +106,7 @@ export default function OnboardingPage() {
           <button
             className="btn btn-ghost"
             disabled={loading}
-            onClick={() => saveContext(AUTOMOTIVE_TEMPLATE)}
+            onClick={useTemplate}
           >
             Use automotive template
           </button>

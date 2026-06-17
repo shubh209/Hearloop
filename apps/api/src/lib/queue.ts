@@ -13,10 +13,11 @@
 //     so no Queue instance stays alive between jobs
 //
 // Idle Redis command budget:
-//   6 workers × concurrency:1 × drainDelay:600s × ~8 cmds/poll = ~691 cmds/day
+//   7 workers × concurrency:1 × drainDelay:600s × ~8 cmds/poll = ~806 cmds/day
 //   Well under the 15K/day safe ceiling (Upstash 500K/month ÷ 30 − headroom)
 
-import { Queue, Worker, Job } from "bullmq";
+import { randomUUID } from "crypto";
+import { Queue, Worker, Job, JobsOptions } from "bullmq";
 import IORedis from "ioredis";
 import { jobLogger } from "./logger";
 
@@ -45,9 +46,12 @@ const QUEUE_NAMES = {
   "deliver-webhook":    "hearloop-webhooks",
   "expire-session":     "hearloop-expire-session",
   "delete-session-assets": "hearloop-delete",
+  "import-business-context": "hearloop-import-context",
 } as const;
 
 export type JobName = keyof typeof QUEUE_NAMES;
+
+export const IMPORT_QUEUE_NAME = QUEUE_NAMES["import-business-context"];
 
 // Default job options applied to every queue.add() call
 const DEFAULT_JOB_OPTIONS = {
@@ -76,6 +80,7 @@ async function enqueue(
     attempts?: number;
     backoff?: { type: string; delay: number };
     delay?: number;
+    jobOptions?: JobsOptions;
   } = {}
 ): Promise<void> {
   // Each Queue instance needs its own IORedis connection (not shared with workers).
@@ -86,9 +91,11 @@ async function enqueue(
   const queue = new Queue(QUEUE_NAMES[jobName], { connection: conn });
 
   try {
+    const { jobOptions, ...enqueueOpts } = options;
     await queue.add(jobName, jobData, {
       ...DEFAULT_JOB_OPTIONS,
-      ...options,
+      ...enqueueOpts,
+      ...jobOptions,
     });
   } finally {
     // Always close — even on error — so the connection doesn't linger
@@ -102,15 +109,13 @@ async function enqueue(
  * Each worker gets an isolated connection so blocking commands don't
  * interfere across workers and drainDelay is respected correctly.
  */
-export function createWorker(
+export function createWorker<T = void>(
   jobName: JobName,
-  handler: (job: Job) => Promise<void>
+  handler: (job: Job) => Promise<T>
 ): Worker {
   const worker = new Worker(
     QUEUE_NAMES[jobName],
-    async (job: Job) => {
-      await handler(job);
-    },
+    async (job: Job) => handler(job),
     {
       connection: makeWorkerConn(),
       ...WORKER_OPTIONS,
@@ -201,4 +206,19 @@ export async function enqueueExpireSession(
       backoff: { type: "exponential", delay: 2000 },
     }
   );
+}
+
+export async function enqueueImportBusinessContext(payload: {
+  partnerId: string;
+  websiteUrl: string;
+}): Promise<string> {
+  const importId = randomUUID();
+  await enqueue("import-business-context", payload as Record<string, unknown>, {
+    jobId: importId,
+    attempts: 1,
+    jobOptions: {
+      removeOnComplete: { age: 3600 },
+    },
+  });
+  return importId;
 }

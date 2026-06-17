@@ -20,6 +20,15 @@ _Avoid_: Widget embed key, password
 Plain-text description of what the Partner's business does, used when classifying feedback (e.g. services offered, typical visit). Improves topic and sentiment relevance; optional at signup, editable later.
 _Avoid_: Prompt text (that's per-Session capture copy), webhook URL
 
+
+**Business context import**:
+Partner-initiated one-time website fetch that drafts `business_context` for review in onboarding/settings. Import pre-fills text only; Partner must click Save to persist it.
+_Avoid_: Automatic scraping on every Session, page context
+
+**Import source URL**:
+The Partner-provided HTTPS site URL used for business-context import. Stored on `partners.website_url` for re-import and visibility in settings.
+_Avoid_: Webhook URL, capture link
+
 **Widget embed key**:
 The browser-safe credential the Partner pastes into `@hearloop/react` on their site. Identifies which Partner receives new Sessions; can only start the capture flow, not read the dashboard or change Partner settings. Shown in dashboard **Settings → Embed** (not on the one-time signup screen).
 _Avoid_: Partner secret key, public token (that's per-Session, not per-Partner)
