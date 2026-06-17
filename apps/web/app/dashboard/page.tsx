@@ -1,37 +1,38 @@
 "use client";
 // hearloop/apps/web/app/dashboard/page.tsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { EmbedSettingsPanel } from "../../components/EmbedSettingsPanel";
 import { ApiSettingsPanel } from "../../components/ApiSettingsPanel";
 
-// ── Mock data (fallback) ───────────────────────────────────
-const MOCK_SESSIONS = [
-  { id: "sess_9aX2kL", sentiment: "positive", topic: "staff_friendliness", urgency: "none", status: "completed", ts: "2m ago", score: 0.82, transcript: "Staff was incredibly helpful and friendly, will definitely come back." },
-  { id: "sess_7bQ1mP", sentiment: "negative", topic: "wait_time", urgency: "urgent", status: "completed", ts: "14m ago", score: 0.78, transcript: "Waited over an hour for an oil change. Completely unacceptable." },
-  { id: "sess_3cR8nQ", sentiment: "neutral", topic: "price", urgency: "follow_up", status: "completed", ts: "28m ago", score: 0.51, transcript: "Price was higher than quoted online, need someone to explain the difference." },
-  { id: "sess_1dM4oR", sentiment: "positive", topic: "service_quality", urgency: "none", status: "completed", ts: "41m ago", score: 0.91, transcript: "Excellent work on my brakes, very professional team." },
-  { id: "sess_5eK7pS", sentiment: "negative", topic: "wait_time", urgency: "urgent", status: "completed", ts: "1h ago", score: 0.84, transcript: "Nobody told me it would take 3 hours. I missed a meeting." },
-  { id: "sess_2fJ9qT", sentiment: "positive", topic: "ease_of_booking", urgency: "none", status: "completed", ts: "2h ago", score: 0.76, transcript: "Really easy to book online, smooth process from start to finish." },
-  { id: "sess_8gH3rU", sentiment: "neutral", topic: "cleanliness", urgency: "none", status: "processing", ts: "2h ago", score: 0.5, transcript: "" },
-];
+// ── Display helpers ─────────────────────────────────────────
+const TOPIC_COLORS = ["#E24B4A", "#EF9F27", "#1D9E75", "#378ADD", "#888"];
 
-const MOCK_TOPICS = [
-  { name: "Wait time", pct: 38, color: "#E24B4A" },
-  { name: "Staff friendliness", pct: 24, color: "#EF9F27" },
-  { name: "Service quality", pct: 19, color: "#1D9E75" },
-  { name: "Price", pct: 12, color: "#378ADD" },
-  { name: "Ease of booking", pct: 7, color: "#888" },
-];
+function timeAgo(iso?: string | null): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "—";
+  const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
-const LOCATIONS = [
-  { name: "North Avenue", sessions: 847, positive: 74, waitMin: 24, urgency: 0, color: "#1D9E75" },
-  { name: "Westside", sessions: 731, positive: 48, waitMin: 51, urgency: 12, color: "#E24B4A" },
-  { name: "Downtown", sessions: 692, positive: 69, waitMin: 31, urgency: 3, color: "#EF9F27" },
-  { name: "Eastpark", sessions: 604, positive: 71, waitMin: 27, urgency: 0, color: "#1D9E75" },
-  { name: "Lakeside", sessions: 438, positive: 55, waitMin: 42, urgency: 8, color: "#EF9F27" },
-];
+function topicLabel(s: any): string {
+  const t = s.topics?.[0];
+  return t ? String(t).replace(/_/g, " ") : "—";
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "HL";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 type NavItem = "dashboard" | "sessions" | "analytics" | "alerts" | "embed" | "apikeys" | "webhooks";
 
@@ -86,33 +87,39 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [router]);
 
-  // ── Derived data — real or mock ──
-  const sessions = realData?.sessions?.length > 0 ? realData.sessions : MOCK_SESSIONS;
+  // ── Derived data — real payload only, no mock fallback ──
+  const sessions: any[] = realData?.sessions ?? [];
+  const hasSessions = sessions.length > 0;
 
   const stats = realData?.stats;
-  const metrics = [
-    { label: "Voice sessions", val: stats ? stats.total.toString() : "4,312", delta: "all time", up: true },
-    { label: "Positive sentiment", val: stats ? `${stats.sentiment.positiveRate}%` : "61%", delta: "of completed", up: true, color: "var(--green)" },
-    { label: "Urgent flags", val: stats ? stats.urgent.toString() : "28", delta: "need attention", up: false, color: "var(--red)" },
-    { label: "Completion rate", val: stats ? `${stats.completionRate}%` : "94%", delta: "submitted vs created", up: true },
+  const sentimentCounts = stats?.sentiment ?? { positive: 0, neutral: 0, negative: 0, positiveRate: 0 };
+  const sentimentTotal = sentimentCounts.positive + sentimentCounts.neutral + sentimentCounts.negative;
+
+  const metrics: { label: string; val: string; delta: string; color?: string }[] = [
+    { label: "Voice sessions", val: stats ? stats.total.toString() : "—", delta: "all time" },
+    { label: "Positive sentiment", val: stats && sentimentTotal > 0 ? `${stats.sentiment.positiveRate}%` : "—", delta: "of completed", color: "var(--green)" },
+    { label: "Urgent flags", val: stats ? stats.urgent.toString() : "—", delta: "need attention", color: "var(--red)" },
+    { label: "Completion rate", val: stats && stats.total > 0 ? `${stats.completionRate}%` : "—", delta: "submitted vs created" },
   ];
 
-  const topicData = realData?.topics?.length > 0
-    ? realData.topics.slice(0, 5).map((t: any, i: number) => ({
-        name: t.name.replace(/_/g, " "),
-        pct: t.pct,
-        color: ["#E24B4A","#EF9F27","#1D9E75","#378ADD","#888"][i] ?? "#888",
-      }))
-    : MOCK_TOPICS;
+  const topicData = (realData?.topics ?? []).slice(0, 5).map((t: any, i: number) => ({
+    name: String(t.name).replace(/_/g, " "),
+    pct: t.pct,
+    color: TOPIC_COLORS[i] ?? "#888",
+  }));
 
   const urgentSessions = sessions.filter((s: any) =>
     s.urgency === "urgent" || s.urgency === "follow_up"
   );
+  const urgentOnlyCount = sessions.filter((s: any) => s.urgency === "urgent").length;
 
   const filteredSessions = sessions.filter((s: any) => {
     if (sessionFilter === "completed" && s.status !== "completed") return false;
     if (sessionFilter === "urgent" && s.urgency !== "urgent") return false;
-    if (search && !s.id.includes(search) && !(s.topic ?? s.topics?.[0] ?? "").includes(search)) return false;
+    if (search) {
+      const hay = `${s.id} ${(s.topics ?? []).join(" ")}`.toLowerCase();
+      if (!hay.includes(search.toLowerCase())) return false;
+    }
     return true;
   });
 
@@ -648,9 +655,9 @@ export default function DashboardPage() {
             <div className={`ni ${nav === "alerts" ? "active" : ""}`} onClick={() => setNav("alerts")}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2V7.5L10 10" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/><circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.1"/></svg>
               Urgent alerts
-              <span className="ni-badge">
-                {MOCK_SESSIONS.filter(s => s.urgency === "urgent").length}
-              </span>
+              {urgentOnlyCount > 0 && (
+                <span className="ni-badge">{urgentOnlyCount}</span>
+              )}
             </div>
 
             <div className="ns">Settings</div>
@@ -670,7 +677,7 @@ export default function DashboardPage() {
 
           <div className="sidebar-footer">
             <div className="user-row">
-              <div className="av">AC</div>
+              <div className="av">{initials(partnerName)}</div>
               <div>
               // In sidebar user row:
               <div className="user-name">{partnerName}</div>
@@ -697,14 +704,14 @@ export default function DashboardPage() {
                 {nav === "apikeys" && "API access"}
                 {nav === "webhooks" && "Webhooks"}
               </div>
-              <div className="topbar-sub">Acme Motors · Last 30 days</div>
+              <div className="topbar-sub">{partnerName} · Last 30 days</div>
             </div>
             <div className="topbar-right">
               <div className="search">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1"/><path d="M8 8L11 11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/></svg>
                 <input placeholder="Search sessions..." value={search} onChange={e => setSearch(e.target.value)} />
               </div>
-              <div className="av">AC</div>
+              <div className="av">{initials(partnerName)}</div>
             </div>
           </div>
 
@@ -713,18 +720,11 @@ export default function DashboardPage() {
             {nav === "dashboard" && (
               <>
                 <div className="metrics">
-                  {[
-                    { label: "Voice sessions", val: "4,312", delta: "+22%", up: true },
-                    { label: "Avg sentiment", val: "61%", delta: "+4pts", up: true, color: "var(--green)" },
-                    { label: "Urgent flags", val: "28", delta: "+8 this week", up: false, color: "var(--red)" },
-                    { label: "Completion rate", val: "94%", delta: "+2pts", up: true },
-                  ].map((m) => (
+                  {metrics.map((m) => (
                     <div key={m.label} className="mc">
                       <div className="ml">{m.label}</div>
                       <div className="mv" style={{color: m.color}}>{m.val}</div>
-                      <div className={`md ${m.up ? "up" : "dn"}`}>
-                        {m.up ? "↑" : "↓"} {m.delta} vs last month
-                      </div>
+                      <div className="md">{m.delta}</div>
                     </div>
                   ))}
                 </div>
@@ -750,23 +750,30 @@ export default function DashboardPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {MOCK_SESSIONS.slice(0,5).map((s) => (
-                          <>
-                            <tr key={s.id} className="sess-row" onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)}>
+                        {!hasSessions && (
+                          <tr>
+                            <td colSpan={5} style={{textAlign:"center",color:"var(--ink-3)",fontSize:12,padding:"24px 0"}}>
+                              {dataLoading ? "Loading…" : "No sessions yet. Share a capture link to collect your first voice feedback."}
+                            </td>
+                          </tr>
+                        )}
+                        {sessions.slice(0,5).map((s: any) => (
+                          <Fragment key={s.id}>
+                            <tr className="sess-row" onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)}>
                               <td><span className="sess-id">{s.id}</span></td>
-                              <td><span className={`pill ${s.sentiment === "positive" ? "pp" : s.sentiment === "negative" ? "pn" : "pnu"}`}>{s.sentiment}</span></td>
-                              <td style={{fontSize:11,color:"var(--ink-3)"}}>{s.topic}</td>
+                              <td><span className={`pill ${s.sentiment === "positive" ? "pp" : s.sentiment === "negative" ? "pn" : "pnu"}`}>{s.sentiment ?? "—"}</span></td>
+                              <td style={{fontSize:11,color:"var(--ink-3)"}}>{topicLabel(s)}</td>
                               <td><span className={`pill ${s.urgency === "urgent" ? "pu" : s.urgency === "follow_up" ? "pf" : "pnu"}`}>{s.urgency}</span></td>
                               <td><span className={`pill ${s.status === "completed" ? "pc" : "ppr"}`}>{s.status}</span></td>
                             </tr>
                             {expandedSession === s.id && s.transcript && (
-                              <tr key={`${s.id}-exp`}>
+                              <tr>
                                 <td colSpan={5}>
                                   <div className="sess-expand">"{s.transcript}"</div>
                                 </td>
                               </tr>
                             )}
-                          </>
+                          </Fragment>
                         ))}
                       </tbody>
                     </table>
@@ -776,6 +783,11 @@ export default function DashboardPage() {
                     <div className="card">
                       <div className="ch"><div className="ct">Top topics</div></div>
                       <div className="tbars">
+                        {topicData.length === 0 && (
+                          <div style={{color:"var(--ink-3)",fontSize:12,padding:"8px 0"}}>
+                            {dataLoading ? "Loading…" : "No topics yet."}
+                          </div>
+                        )}
                         {topicData.map((t: any) => (
                           <div key={t.name} className="trow">
                             <div className="tmeta"><span className="tn">{t.name}</span><span className="tp">{t.pct}%</span></div>
@@ -786,52 +798,56 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="card">
-                      <div className="ch"><div className="ct">Sentiment</div><span className="pill pp">61% positive</span></div>
-                      <div className="donut-wrap">
-                        <svg width="90" height="90" viewBox="0 0 90 90" aria-label="Donut chart: 61% positive, 25% neutral, 14% negative">
-                          <circle cx="45" cy="45" r="35" fill="none" stroke="var(--paper-2)" strokeWidth="14"/>
-                          <circle cx="45" cy="45" r="35" fill="none" stroke="#1D9E75" strokeWidth="14"
-                            strokeDasharray={`${0.61*220} ${220}`} strokeDashoffset="55" strokeLinecap="round"/>
-                          <circle cx="45" cy="45" r="35" fill="none" stroke="#888" strokeWidth="14"
-                            strokeDasharray={`${0.25*220} ${220}`} strokeDashoffset={`${-(0.61*220)+55}`} />
-                          <circle cx="45" cy="45" r="35" fill="none" stroke="#E24B4A" strokeWidth="14"
-                            strokeDasharray={`${0.14*220} ${220}`} strokeDashoffset={`${-(0.86*220)+55}`} />
-                        </svg>
-                        <div className="donut-legend">
-                          {[{c:"#1D9E75",l:"Positive",v:"61%"},{c:"#888",l:"Neutral",v:"25%"},{c:"#E24B4A",l:"Negative",v:"14%"}].map(i => (
-                            <div key={i.l} className="leg">
-                              <div className="legdot" style={{background:i.c}} />
-                              {i.l}<span className="legval">{i.v}</span>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="ch"><div className="ct">Sentiment</div>
+                        {sentimentTotal > 0 && <span className="pill pp">{stats.sentiment.positiveRate}% positive</span>}
                       </div>
+                      {sentimentTotal === 0 ? (
+                        <div style={{color:"var(--ink-3)",fontSize:12,padding:"20px 0",textAlign:"center"}}>
+                          {dataLoading ? "Loading…" : "No completed sessions yet."}
+                        </div>
+                      ) : (
+                        <div className="donut-wrap">
+                          {(() => {
+                            const C = 220;
+                            const pos = sentimentCounts.positive / sentimentTotal;
+                            const neu = sentimentCounts.neutral / sentimentTotal;
+                            const neg = sentimentCounts.negative / sentimentTotal;
+                            return (
+                              <svg width="90" height="90" viewBox="0 0 90 90" aria-label={`Sentiment donut: ${Math.round(pos*100)}% positive, ${Math.round(neu*100)}% neutral, ${Math.round(neg*100)}% negative`}>
+                                <circle cx="45" cy="45" r="35" fill="none" stroke="var(--paper-2)" strokeWidth="14"/>
+                                <circle cx="45" cy="45" r="35" fill="none" stroke="#1D9E75" strokeWidth="14"
+                                  strokeDasharray={`${pos*C} ${C}`} strokeDashoffset="55" />
+                                <circle cx="45" cy="45" r="35" fill="none" stroke="#888" strokeWidth="14"
+                                  strokeDasharray={`${neu*C} ${C}`} strokeDashoffset={`${-(pos*C)+55}`} />
+                                <circle cx="45" cy="45" r="35" fill="none" stroke="#E24B4A" strokeWidth="14"
+                                  strokeDasharray={`${neg*C} ${C}`} strokeDashoffset={`${-((pos+neu)*C)+55}`} />
+                              </svg>
+                            );
+                          })()}
+                          <div className="donut-legend">
+                            {[
+                              {c:"#1D9E75",l:"Positive",v:`${Math.round((sentimentCounts.positive/sentimentTotal)*100)}%`},
+                              {c:"#888",l:"Neutral",v:`${Math.round((sentimentCounts.neutral/sentimentTotal)*100)}%`},
+                              {c:"#E24B4A",l:"Negative",v:`${Math.round((sentimentCounts.negative/sentimentTotal)*100)}%`},
+                            ].map(i => (
+                              <div key={i.l} className="leg">
+                                <div className="legdot" style={{background:i.c}} />
+                                {i.l}<span className="legval">{i.v}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* LOCATIONS */}
+                {/* LOCATIONS / TARGETS — populated once per-location capture links ship */}
                 <div className="card">
-                  <div className="ch"><div className="ct">Location performance</div><select className="sel"><option>By sentiment</option><option>By volume</option></select></div>
-                  <div>
-                    <div className="lrow lh"><span>Location</span><span>Sessions</span><span>Positive</span><span>Avg wait</span><span>Urgency</span></div>
-                    {LOCATIONS.map((l) => (
-                      <div key={l.name} className="lrow">
-                        <span style={{fontWeight:500,fontSize:12,color:"var(--ink)"}}>{l.name}</span>
-                        <span style={{color:"var(--ink-3)"}}>{l.sessions}</span>
-                        <span style={{color:l.color,fontWeight:500}}>{l.positive}%</span>
-                        <div className="bar-inline">
-                          <div className="bi" style={{width:l.waitMin*0.8,background:l.color,maxWidth:60}} />
-                          <span style={{color:"var(--ink-3)"}}>{l.waitMin}m</span>
-                        </div>
-                        <span>
-                          {l.urgency > 0
-                            ? <span className="pill pu">{l.urgency} urgent</span>
-                            : <span className="pill pnu">none</span>
-                          }
-                        </span>
-                      </div>
-                    ))}
+                  <div className="ch"><div className="ct">Location &amp; target performance</div></div>
+                  <div style={{color:"var(--ink-3)",fontSize:12,padding:"20px 0",textAlign:"center"}}>
+                    Per-location and per-target breakdowns appear here once you create
+                    capture links for each location or service.
                   </div>
                 </div>
               </>
@@ -863,25 +879,32 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {!hasSessions && (
+                      <tr>
+                        <td colSpan={7} style={{textAlign:"center",color:"var(--ink-3)",fontSize:12,padding:"24px 0"}}>
+                          {dataLoading ? "Loading…" : "No sessions yet."}
+                        </td>
+                      </tr>
+                    )}
                     {filteredSessions.map((s: any) => (
-                      <>
-                        <tr key={s.id} className="sess-row" onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)}>
+                      <Fragment key={s.id}>
+                        <tr className="sess-row" onClick={() => setExpandedSession(expandedSession === s.id ? null : s.id)}>
                           <td><span className="sess-id">{s.id}</span></td>
-                          <td><span className={`pill ${s.sentiment === "positive" ? "pp" : s.sentiment === "negative" ? "pn" : "pnu"}`}>{s.sentiment}</span></td>
-                          <td style={{fontSize:11,color:"var(--ink-3)",fontFamily:"var(--font-mono)"}}>{s.score.toFixed(2)}</td>
-                          <td style={{fontSize:11,color:"var(--ink-3)"}}>{s.topic}</td>
+                          <td><span className={`pill ${s.sentiment === "positive" ? "pp" : s.sentiment === "negative" ? "pn" : "pnu"}`}>{s.sentiment ?? "—"}</span></td>
+                          <td style={{fontSize:11,color:"var(--ink-3)",fontFamily:"var(--font-mono)"}}>{typeof s.sentimentScore === "number" ? s.sentimentScore.toFixed(2) : "—"}</td>
+                          <td style={{fontSize:11,color:"var(--ink-3)"}}>{topicLabel(s)}</td>
                           <td><span className={`pill ${s.urgency === "urgent" ? "pu" : s.urgency === "follow_up" ? "pf" : "pnu"}`}>{s.urgency}</span></td>
                           <td><span className={`pill ${s.status === "completed" ? "pc" : "ppr"}`}>{s.status}</span></td>
-                          <td style={{fontSize:11,color:"var(--ink-3)"}}>{s.ts}</td>
+                          <td style={{fontSize:11,color:"var(--ink-3)"}}>{timeAgo(s.createdAt)}</td>
                         </tr>
                         {expandedSession === s.id && s.transcript && (
-                          <tr key={`${s.id}-exp`}>
+                          <tr>
                             <td colSpan={7}>
                               <div className="sess-expand">"{s.transcript}"</div>
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -896,12 +919,17 @@ export default function DashboardPage() {
                   <span className="pill pu">{urgentSessions.length} open</span>
                 </div>
                 <div className="alist">
+                  {urgentSessions.length === 0 && (
+                    <div style={{color:"var(--ink-3)",fontSize:12,padding:"12px 0"}}>
+                      {dataLoading ? "Loading…" : "No urgent or follow-up alerts."}
+                    </div>
+                  )}
                   {urgentSessions.map((s: any) => (
                     <div key={s.id} className={`ai ${s.urgency === "urgent" ? "urg" : "fol"}`}>
                       <div className={`adot ${s.urgency === "urgent" ? "du" : "df"}`} />
                       <div>
                         <div className="at">"{s.transcript}"</div>
-                        <div className="am">{s.id} · {s.ts} · {s.topic}</div>
+                        <div className="am">{s.id} · {timeAgo(s.createdAt)} · {topicLabel(s)}</div>
                       </div>
                     </div>
                   ))}
@@ -917,29 +945,11 @@ export default function DashboardPage() {
               <div className="card">
                 <div className="ch">
                   <div className="ct">Webhook endpoints</div>
-                  <button className="btn-primary">
-                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1.5V9.5M1.5 5.5H9.5" stroke="white" strokeWidth="1.4" strokeLinecap="round"/></svg>
-                    Add endpoint
-                  </button>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                  {[
-                    { url: "https://acme-motors.com/webhook/hearloop", events: ["session.completed","session.failed"], status: "active", lastDelivery: "2 min ago", success: true },
-                    { url: "https://acme-motors.com/webhook/alerts", events: ["session.completed"], status: "active", lastDelivery: "14 min ago", success: true },
-                  ].map((w) => (
-                    <div key={w.url} style={{background:"var(--paper-2)",border:"0.5px solid var(--paper-3)",borderRadius:8,padding:"12px 14px"}}>
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                        <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--ink-2)"}}>{w.url}</span>
-                        <span className={`pill ${w.status === "active" ? "pc" : "pn"}`}>{w.status}</span>
-                      </div>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-                        {w.events.map(e => <span key={e} style={{fontSize:10,background:"var(--paper)",border:"0.5px solid var(--paper-3)",borderRadius:4,padding:"2px 6px",color:"var(--ink-3)"}}>{e}</span>)}
-                      </div>
-                      <div style={{fontSize:11,color:"var(--ink-3)"}}>
-                        Last delivery: {w.lastDelivery} · {w.success ? <span style={{color:"var(--green)"}}>✓ 200 OK</span> : <span style={{color:"var(--red)"}}>✗ Failed</span>}
-                      </div>
-                    </div>
-                  ))}
+                <div style={{color:"var(--ink-3)",fontSize:12,padding:"8px 0",lineHeight:1.5}}>
+                  Set your webhook URL in <strong style={{color:"var(--ink-2)"}}>API access</strong> settings.
+                  Hearloop POSTs a signed <code style={{fontFamily:"var(--font-mono)"}}>session.completed</code> event
+                  there when analysis finishes. Per-endpoint delivery history will appear here in a future update.
                 </div>
               </div>
             )}
