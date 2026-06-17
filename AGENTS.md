@@ -1,9 +1,9 @@
 # Hearloop — AI Session Context
 
 > **One-file catchup.** Read this file first. For deeper dives see `context/` folder.
-> This file is auto-read by Cursor, Claude Code, GitHub Copilot, Kiro, and OpenAI Codex agents.
+> Domain/ubiquitous language lives in `CONTEXT.md`. This file is auto-read by Cursor, Claude Code, GitHub Copilot, and OpenAI Codex agents.
 >
-> **Interview prep (next chat):** [`context/INTERVIEW_PREP.md`](context/INTERVIEW_PREP.md) — session handoff, CREO starter, coverage status, live E2E notes. Index: [`interview-prep/README.md`](interview-prep/README.md).
+> **Interview prep:** [`career/interview-prep/INTERVIEW_PREP.md`](career/interview-prep/INTERVIEW_PREP.md) — session handoff, CREO starter, coverage status, live E2E notes. Index: [`career/interview-prep/README.md`](career/interview-prep/README.md). All resume/career material now lives under `career/`.
 
 [![CI](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml/badge.svg)](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml)
 
@@ -272,8 +272,10 @@ Falls back gracefully to context-free analysis if `business_context` is null.
 
 | File | Use when… |
 |---|---|
-| `context/CATCHUP.md` | Need full context with code details |
+| `CONTEXT.md` | Need the domain/ubiquitous language (Partner, Session, Insights, tokens) |
+| `context/PHASE1_PLATFORM.md` | Deploying the widget-keys + dashboard-session platform work |
 | `context/BACKLOG.md` | Planning what to work on next |
 | `context/INFRA.md` | Deploying, SSH, env vars, AWS resources |
 | `context/DECISIONS.md` | Questioning a tech choice |
 | `context/METRICS.md` | Before/after measurements for every feature (resume-ready numbers) |
+| `career/` | Resume bullets, interview prep, networking notes (not code) |
