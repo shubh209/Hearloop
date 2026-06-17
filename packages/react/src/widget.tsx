@@ -250,6 +250,7 @@ export function HearloopWidget({
   className,
   // UseHearloopOptions — forwarded unchanged
   sessionCreateToken,
+  embedKey,
   apiKey,
   promptText = "How was your experience today?",
   maxDurationSec,
@@ -281,6 +282,7 @@ export function HearloopWidget({
     error,
   } = useHearloop({
     sessionCreateToken,
+    embedKey,
     apiKey,
     promptText,
     maxDurationSec,

@@ -43,6 +43,8 @@ Add `context/CATCHUP.md` for code-level detail on all routes, jobs, schema, and 
 | `INFRA.md` | ~80 | Live URLs, AWS resources, SSH commands, deploy steps, env vars |
 | `DECISIONS.md` | ~70 | Why each major tech choice was made |
 | `README.md` | this file | How to use this folder |
+| `../interview-prep/README.md` | index | **Interview prep** — 10 coverage areas + diagrams |
+| `INTERVIEW_PREP.md` | rolling | Session state, architecture answers, CREO handoff |
 
 ---
 

@@ -11,6 +11,8 @@ interface SessionCreateOpts {
 /** Auth credentials — exactly one field must be present when runApiFlow is called. */
 export interface ApiAuth {
   sessionCreateToken?: string;
+  embedKey?: string;
+  /** @deprecated Prefer embedKey in the browser. */
   apiKey?: string;
 }
 
@@ -20,16 +22,22 @@ export interface ApiAuth {
 
 export async function getSessionCreateToken(
   apiBaseUrl: string,
-  apiKey: string
+  key: string,
+  kind: "embed" | "secret" = "embed"
 ): Promise<string> {
+  const body =
+    kind === "embed" || key.startsWith("pk-live_")
+      ? { embedKey: key }
+      : { apiKey: key };
+
   const res = await fetch(`${apiBaseUrl}/public/sessions/create-token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apiKey }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
-    throw new Error("Failed to get session token. Check your API key.");
+    throw new Error("Failed to get session token. Check your embed key.");
   }
 
   const data = (await res.json()) as { token?: string; sessionCreateToken?: string };
@@ -181,11 +189,14 @@ export async function runApiFlow(
   let sessionCreateToken: string;
   if (auth.sessionCreateToken) {
     sessionCreateToken = auth.sessionCreateToken;
+  } else if (auth.embedKey) {
+    sessionCreateToken = await getSessionCreateToken(apiBaseUrl, auth.embedKey, "embed");
   } else if (auth.apiKey) {
-    sessionCreateToken = await getSessionCreateToken(apiBaseUrl, auth.apiKey);
+    sessionCreateToken = await getSessionCreateToken(apiBaseUrl, auth.apiKey, "secret");
   } else {
-    // Guard: should never reach here — useHearloop checks auth before calling runApiFlow
-    throw new Error("No authentication provided. Pass sessionCreateToken or apiKey.");
+    throw new Error(
+      "No authentication provided. Pass sessionCreateToken or embedKey."
+    );
   }
 
   // Step 2: create session

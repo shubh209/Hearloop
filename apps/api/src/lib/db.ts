@@ -60,6 +60,7 @@ export interface AnalysesTable {
 export interface ApiKeysTable {
   id: Generated<string>;
   partner_id: string;
+  type: Generated<"secret" | "public">;
   key_prefix: string;
   key_hash: string;
   revoked_at: Date | null;

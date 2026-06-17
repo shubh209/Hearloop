@@ -1,0 +1,6 @@
+{
+  "installCommand": "cd ../.. && npm install",
+  "buildCommand": "cd ../.. && npm run build --workspace=@hearloop/react && npm run build --workspace=quicklube-demo",
+  "framework": "nextjs",
+  "regions": ["iad1"]
+}

@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { EmbedSettingsPanel } from "../../components/EmbedSettingsPanel";
+import { ApiSettingsPanel } from "../../components/ApiSettingsPanel";
 
 // ── Mock data (fallback) ───────────────────────────────────
 const MOCK_SESSIONS = [
@@ -31,7 +33,7 @@ const LOCATIONS = [
   { name: "Lakeside", sessions: 438, positive: 55, waitMin: 42, urgency: 8, color: "#EF9F27" },
 ];
 
-type NavItem = "dashboard" | "sessions" | "analytics" | "alerts" | "apikeys" | "webhooks";
+type NavItem = "dashboard" | "sessions" | "analytics" | "alerts" | "embed" | "apikeys" | "webhooks";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -58,8 +60,13 @@ export default function DashboardPage() {
 
     // API key is in the httpOnly cookie — the proxy injects it automatically.
     // No need to read it from localStorage or pass it in the Authorization header.
+    if (typeof window !== "undefined") {
+      const navParam = new URLSearchParams(window.location.search).get("nav");
+      if (navParam === "embed") setNav("embed");
+    }
+
     const fetchDashboard = () =>
-      fetch(`/api/v1/partners/${session.partnerId}/dashboard`)
+      fetch(`/api/v1/partners/me/dashboard`)
         .then(r => {
           if (r.status === 401) {
             // Cookie expired or missing — redirect to login
@@ -647,9 +654,13 @@ export default function DashboardPage() {
             </div>
 
             <div className="ns">Settings</div>
+            <div className={`ni ${nav === "embed" ? "active" : ""}`} onClick={() => setNav("embed")}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7h10M7 2v10" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+              Widget embed
+            </div>
             <div className={`ni ${nav === "apikeys" ? "active" : ""}`} onClick={() => setNav("apikeys")}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="4.5" width="11" height="6" rx="1.2" stroke="currentColor" strokeWidth="1.1"/><path d="M4.5 4.5V3.2C4.5 2.4 5.6 1.8 7 1.8C8.4 1.8 9.5 2.4 9.5 3.2V4.5" stroke="currentColor" strokeWidth="1.1"/></svg>
-              API keys
+              API access
             </div>
             <div className={`ni ${nav === "webhooks" ? "active" : ""}`} onClick={() => setNav("webhooks")}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4.5L7 7.5L12 4.5M2 4.5V9.5C2 10.1 2.4 10.5 3 10.5H11C11.6 10.5 12 10.1 12 9.5V4.5M2 4.5L7 1.5L12 4.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/></svg>
@@ -682,7 +693,8 @@ export default function DashboardPage() {
                 {nav === "sessions" && "Sessions"}
                 {nav === "analytics" && "Analytics"}
                 {nav === "alerts" && "Urgent alerts"}
-                {nav === "apikeys" && "API keys"}
+                {nav === "embed" && "Widget embed"}
+                {nav === "apikeys" && "API access"}
                 {nav === "webhooks" && "Webhooks"}
               </div>
               <div className="topbar-sub">Acme Motors · Last 30 days</div>
@@ -897,41 +909,8 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* ── API KEYS ── */}
-            {nav === "apikeys" && (
-              <div className="card">
-                <div className="ch">
-                  <div className="ct">API keys</div>
-                  <button className="btn-primary">
-                    <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1.5V9.5M1.5 5.5H9.5" stroke="white" strokeWidth="1.4" strokeLinecap="round"/></svg>
-                    Generate key
-                  </button>
-                </div>
-                <div style={{display:"flex",flexDirection:"column"}}>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 160px 100px 120px",gap:8,padding:"0 0 8px",fontSize:10,fontWeight:500,color:"var(--ink-3)",textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:"0.5px solid var(--paper-3)"}}>
-                    <span>Name</span><span>Key</span><span>Last used</span><span></span>
-                  </div>
-                  {[
-                    { name: "Production", key: "sk-live_••••••••3HO", used: "2 min ago" },
-                    { name: "Staging", key: "sk-live_••••••••7KX", used: "1 day ago" },
-                    { name: "Dev / local", key: "sk-test_••••••••1234", used: "3 days ago" },
-                  ].map((k) => (
-                    <div key={k.name} className="key-row">
-                      <span style={{fontWeight:500,fontSize:13}}>{k.name}</span>
-                      <span
-                        className="key-code"
-                        onClick={() => { navigator.clipboard.writeText(k.key); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-                      >{k.key}</span>
-                      <span style={{fontSize:11,color:"var(--ink-3)"}}>{k.used}</span>
-                      <div style={{display:"flex",gap:6}}>
-                        <button className="btn-sm" onClick={copyKey}>{copied ? "✓" : "Copy"}</button>
-                        <button className="btn-danger">Revoke</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {nav === "embed" && <EmbedSettingsPanel />}
+            {nav === "apikeys" && <ApiSettingsPanel />}
 
             {/* ── WEBHOOKS ── */}
             {nav === "webhooks" && (

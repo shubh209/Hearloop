@@ -14,7 +14,6 @@ import Fastify from "fastify";
 import { jobLogger } from "./lib/logger";
 import { sessionRoutes } from "./routes/sessions";
 import { publicRoutes } from "./routes/public";
-import { db } from "./lib/db";
 import { createWorker } from "./lib/queue";
 import { runValidateRecordingJob } from "./jobs/validate-recording";
 import { runTranscribeJob } from "./jobs/transcribe";
@@ -24,73 +23,17 @@ import { runExpireSessionJob } from "./jobs/expire-session";
 import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
 import { partnerRoutes } from "./routes/partners";
+import { partnerMeRoutes } from "./routes/partner-me";
 import { healthRoutes } from "./routes/health";
+import {
+  authenticatePartner,
+  authenticateSecretKey,
+} from "./lib/authenticate-partner";
 
 const app = Fastify({ logger: true });
 
-// --- Auth decorator ---
-app.decorate("authenticate", async (req: any, reply: any) => {
-  const auth = req.headers["authorization"];
-  if (!auth?.startsWith("Bearer ")) {
-    return reply.code(401).send({ error: "missing_auth" });
-  }
-  const token = auth.slice(7);
-  const { createHash } = await import("crypto");
-  const keyHash = createHash("sha256").update(token).digest("hex");
-
-  const apiKey = await db
-    .selectFrom("api_keys")
-    .innerJoin("partners", "partners.id", "api_keys.partner_id")
-    .select([
-      "api_keys.id as keyId",
-      "api_keys.partner_id",
-      "partners.id as partnerId",
-      "partners.name",
-      "partners.status",
-      "partners.webhook_url",
-      "partners.allowed_origins",
-      "partners.default_config_json",
-      "partners.business_context",
-    ])
-    .where("api_keys.key_hash", "=", keyHash)
-    .where("api_keys.revoked_at", "is", null)
-    .where("partners.status", "=", "active")
-    .executeTakeFirst();
-
-  if (!apiKey) return reply.code(401).send({ error: "invalid_api_key" });
-
-  await db
-    .updateTable("api_keys")
-    .set({ last_used_at: new Date() })
-    .where("id", "=", apiKey.keyId)
-    .execute();
-
-  req.partner = {
-    id: apiKey.partnerId,
-    name: apiKey.name,
-    webhookUrl: apiKey.webhook_url,
-    allowedOrigins: apiKey.allowed_origins,
-    businessContext: apiKey.business_context ?? null,
-  };
-
-  // Per-partner origin enforcement: if the partner has configured allowed_origins,
-  // validate the request Origin and override the CORS header to the specific origin.
-  const requestOrigin = req.headers["origin"];
-  if (apiKey.allowed_origins && requestOrigin) {
-    const allowed = apiKey.allowed_origins
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean);
-
-    if (!allowed.includes(requestOrigin)) {
-      return reply
-        .code(403)
-        .send({ error: "origin_not_allowed" });
-    }
-    // Override the wildcard set by the onRequest hook with the specific allowed origin.
-    reply.header("Access-Control-Allow-Origin", requestOrigin);
-  }
-});
+app.decorate("authenticate", authenticateSecretKey);
+app.decorate("authenticatePartner", authenticatePartner);
 
 // --- CORS ---
 app.addHook("onRequest", async (req, reply) => {
@@ -183,6 +126,7 @@ const start = async () => {
       await app.register(sessionRoutes, { prefix: "/v1" });
       await app.register(publicRoutes, { prefix: "/v1" });
       await app.register(partnerRoutes, { prefix: "/v1" });
+      await app.register(partnerMeRoutes, { prefix: "/v1" });
       await app.register(healthRoutes);
 
       // 3. Listen

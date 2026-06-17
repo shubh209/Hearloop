@@ -6,6 +6,10 @@ declare module "fastify" {
       req: FastifyRequest,
       reply: FastifyReply
     ): Promise<void>;
+    authenticatePartner(
+      req: FastifyRequest,
+      reply: FastifyReply
+    ): Promise<void>;
   }
 
   interface FastifyRequest {

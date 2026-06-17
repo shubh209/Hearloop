@@ -12,15 +12,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [company, setCompany] = useState("");
-  const [apiKeyModal, setApiKeyModal] = useState<string | null>(null);
-  const [keyCopied, setKeyCopied] = useState(false);
-
-  const copyApiKey = (key: string) => {
-    navigator.clipboard.writeText(key);
-    setKeyCopied(true);
-    setTimeout(() => setKeyCopied(false), 2000);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -45,18 +36,13 @@ export default function LoginPage() {
         return;
       }
   
-      // Store only non-sensitive session info in localStorage.
-      // The API key lives in the httpOnly cookie — JS never sees it.
       localStorage.setItem("hl_session", JSON.stringify({
         partnerId: data.partnerId,
         name: data.name,
-        keyPrefix: data.keyPrefix ?? null,
       }));
-  
-      if (mode === "signup" && data.apiKey) {
-        // Show the one-time key modal. The key is already in the httpOnly cookie.
-        setApiKeyModal(data.apiKey);
-        setLoading(false);
+
+      if (mode === "signup" && data.hasBusinessContext === false) {
+        router.push("/onboarding");
         return;
       }
 
@@ -508,42 +494,6 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
-
-        {/* API KEY MODAL */}
-        {apiKeyModal && (
-          <div className="modal-overlay">
-            <div className="modal">
-              <div className="modal-icon">
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M10 2L12.09 7.26L18 8.18L14 12.14L14.91 18L10 15.27L5.09 18L6 12.14L2 8.18L7.91 7.26L10 2Z" fill="#1D9E75"/>
-                </svg>
-              </div>
-              <div>
-                <div className="modal-title">Account created.</div>
-                <div className="modal-sub">Copy your API key below. You'll need it to authenticate API requests and to log in on new devices.</div>
-              </div>
-              <div className="key-box">
-                <span className="key-value">{apiKeyModal}</span>
-                <button
-                  className={`copy-btn ${keyCopied ? "copied" : ""}`}
-                  onClick={() => copyApiKey(apiKeyModal)}
-                >
-                  {keyCopied ? "Copied ✓" : "Copy"}
-                </button>
-              </div>
-              <div className="modal-warn">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{flexShrink:0,marginTop:1}}>
-                  <path d="M7 1L13 12H1L7 1Z" stroke="#EF9F27" strokeWidth="1.2" strokeLinejoin="round"/>
-                  <path d="M7 5V8M7 10V10.5" stroke="#EF9F27" strokeWidth="1.2" strokeLinecap="round"/>
-                </svg>
-                This key will not be shown again. Store it somewhere safe — a password manager or your `.env` file.
-              </div>
-              <button className="modal-continue" onClick={() => router.push("/dashboard")}>
-                I've saved my key — go to dashboard →
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* RIGHT */}
         <div className="right">

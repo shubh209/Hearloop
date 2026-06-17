@@ -2,6 +2,8 @@
 
 > **One-file catchup.** Read this file first. For deeper dives see `context/` folder.
 > This file is auto-read by Cursor, Claude Code, GitHub Copilot, Kiro, and OpenAI Codex agents.
+>
+> **Interview prep (next chat):** [`context/INTERVIEW_PREP.md`](context/INTERVIEW_PREP.md) — session handoff, CREO starter, coverage status, live E2E notes. Index: [`interview-prep/README.md`](interview-prep/README.md).
 
 [![CI](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml/badge.svg)](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml)
 

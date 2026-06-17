@@ -23,9 +23,12 @@ export interface UseHearloopOptions {
   sessionCreateToken?: string;
 
   /**
-   * Raw API key. Only appropriate for server-side-rendered contexts.
-   * If provided without `sessionCreateToken`, the SDK will call
-   * `POST /v1/public/sessions/create-token` to exchange it for a short-lived token.
+   * Widget embed key (`pk-live_…`) for browser embeds. Preferred over `apiKey`.
+   */
+  embedKey?: string;
+
+  /**
+   * @deprecated Use `embedKey` on public sites. Secret keys belong server-side only.
    */
   apiKey?: string;
 

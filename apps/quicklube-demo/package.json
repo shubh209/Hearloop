@@ -1,0 +1,23 @@
+{
+  "name": "quicklube-demo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "../../node_modules/.bin/next dev -p 3002",
+    "build": "../../node_modules/.bin/next build",
+    "start": "../../node_modules/.bin/next start -p 3002",
+    "lint": "../../node_modules/.bin/next lint"
+  },
+  "dependencies": {
+    "@hearloop/react": "*",
+    "next": "^15.5.18",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}

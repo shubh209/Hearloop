@@ -7,32 +7,47 @@ import { db } from "../lib/db";
 import { getUploadSignedUrl } from "../lib/storage";
 import { enqueueValidate } from "../lib/queue";
 import { logger } from "../lib/logger";
+import { lookupPartnerByApiKey, isOriginAllowed } from "../lib/lookup-api-key";
 
 export async function publicRoutes(app: FastifyInstance) {
-  // POST /public/sessions/create-token — create short-lived token for session creation
+  // POST /public/sessions/create-token — exchange embed or secret key for session-create token
   app.post(
     "/public/sessions/create-token",
     async (req: FastifyRequest, reply: FastifyReply) => {
-      const { apiKey } = req.body as { apiKey?: string };
+      const body = req.body as { apiKey?: string; embedKey?: string };
+      const rawKey = body.embedKey ?? body.apiKey;
 
-      if (!apiKey) {
-        return reply.code(400).send({ error: "apiKey required" });
+      if (!rawKey) {
+        return reply.code(400).send({ error: "embedKey or apiKey required" });
       }
 
       try {
-        // 1. Find partner by API key (hash the key, look up via api_keys table)
-        const keyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
-        const keyRecord = await db
-          .selectFrom("api_keys")
-          .innerJoin("partners", "partners.id", "api_keys.partner_id")
-          .select(["partners.id as partnerId", "partners.status"])
-          .where("api_keys.key_hash", "=", keyHash)
-          .where("api_keys.revoked_at", "is", null)
-          .where("partners.status", "=", "active")
-          .executeTakeFirst();
+        const isEmbed = rawKey.startsWith("pk-live_");
+        const keyRecord = await lookupPartnerByApiKey(rawKey, {
+          allowedTypes: isEmbed ? ["public"] : ["secret", "public"],
+        });
 
         if (!keyRecord) {
           return reply.code(401).send({ error: "Invalid API key" });
+        }
+
+        if (keyRecord.keyType === "public") {
+          if (!keyRecord.allowedOrigins) {
+            return reply.code(403).send({
+              error: "embed_not_configured",
+              message:
+                "Add your website URL in Hearloop dashboard → Settings → Embed before using the widget.",
+            });
+          }
+
+          const requestOrigin = req.headers.origin as string | undefined;
+          if (!isOriginAllowed(keyRecord.allowedOrigins, requestOrigin)) {
+            return reply.code(403).send({ error: "origin_not_allowed" });
+          }
+
+          if (requestOrigin) {
+            reply.header("Access-Control-Allow-Origin", requestOrigin);
+          }
         }
 
         // 2. Generate token (32 bytes = 64 hex chars)
@@ -43,7 +58,7 @@ export async function publicRoutes(app: FastifyInstance) {
         await db
           .insertInto("session_create_tokens")
           .values({
-            partner_id: keyRecord.partnerId,
+            partner_id: keyRecord.partnerId as string,
             token,
             expires_at: expiresAt,
             used_at: null,

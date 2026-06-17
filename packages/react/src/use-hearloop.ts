@@ -12,6 +12,7 @@ const DEFAULT_PROMPT_TEXT = "How was your experience today?";
 export function useHearloop(options: UseHearloopOptions): UseHearloopReturn {
   const {
     sessionCreateToken,
+    embedKey,
     apiKey,
     promptText = DEFAULT_PROMPT_TEXT,
     maxDurationSec = DEFAULT_MAX_DURATION_SEC,
@@ -101,9 +102,9 @@ export function useHearloop(options: UseHearloopOptions): UseHearloopReturn {
 
   const send = useCallback(async () => {
     // Auth guard — check before any network call
-    if (!sessionCreateToken && !apiKey) {
+    if (!sessionCreateToken && !embedKey && !apiKey) {
       setError(
-        "No authentication provided. Pass sessionCreateToken or apiKey."
+        "No authentication provided. Pass sessionCreateToken or embedKey."
       );
       setState("error");
       stateRef.current = "error";
@@ -126,7 +127,7 @@ export function useHearloop(options: UseHearloopOptions): UseHearloopReturn {
     try {
       await runApiFlow(
         apiBaseUrl,
-        { sessionCreateToken, apiKey },
+        { sessionCreateToken, embedKey, apiKey },
         blobSnapshot,
         blobSnapshot.type || "audio/webm",
         {
@@ -147,7 +148,7 @@ export function useHearloop(options: UseHearloopOptions): UseHearloopReturn {
       setState("error");
       stateRef.current = "error";
     }
-  }, [sessionCreateToken, apiKey, apiBaseUrl, promptText, maxDurationSec, audioBlob]);
+  }, [sessionCreateToken, embedKey, apiKey, apiBaseUrl, promptText, maxDurationSec, audioBlob]);
 
   const reset = useCallback(() => {
     clearCountdown();

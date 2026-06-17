@@ -119,7 +119,7 @@ ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193 \
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://hearloop.vercel.app/api/v1` (uses Vercel proxy) |
+| `NEXT_PUBLIC_API_URL` | `https://hearloop.vercel.app/api` — **not** `/api/v1` (proxy adds `/v1`). Using `/api/v1` breaks server-side capture page fetch (404). |
 
 ---
 

@@ -1,0 +1,35 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --ql-red: #c41e3a;
+  --ql-red-dark: #9a1529;
+  --ql-navy: #1a2332;
+  --ql-slate: #4a5568;
+  --ql-cream: #f7f5f0;
+  --ql-white: #ffffff;
+  --font-sans: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body {
+  min-height: 100%;
+  font-family: var(--font-sans);
+  color: var(--ql-navy);
+  background: var(--ql-cream);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
