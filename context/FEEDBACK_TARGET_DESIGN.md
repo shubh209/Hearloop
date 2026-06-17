@@ -4,7 +4,12 @@
 > is automatically attributed to **what the feedback is about** (a product, a page, a
 > service, a location). The dashboard then groups Insights and trends by that thing.
 >
-> Status: **design / not built.** No code yet.
+> Status: **Phase 1 built (in-person attribution).** Capture-link Targets ship today:
+> migration `007_capture_links.sql`, `routes/capture-links.ts`, public mint
+> `POST /public/capture/:linkToken/session` (writes the Target into `sessions.metadata_json`),
+> the `/c/[link]` bridge page, `CaptureLinksPanel`, and the dashboard **By-Target** view.
+> **Still designed / not built:** the widget's client-side page-context read (online surface)
+> and Phase 2's dedicated `feedback_targets` table + identity merge.
 
 ---
 

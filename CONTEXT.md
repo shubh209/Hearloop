@@ -76,6 +76,10 @@ _Avoid_: Channel (reserve for Insights delivery — dashboard vs webhook)
 A stable public URL (rendered as a QR code or sent by SMS) that opens the Hosted capture page for in-person feedback — printed on receipts, counter signage, or service-bay cards. May encode a **Target** (location/service). The primary capture surface.
 _Avoid_: Widget embed (that's the online surface), public token (that's per-Session)
 
+**Target**:
+The thing a Session is feedback *about* — a location, service, product, or staff member (e.g. "North Ave — Oil Change"). Stored as a human `label` plus a normalized `key` for grouping. Sourced from a Capture link (in-person, built) or, in future, from page context detected by the Widget (online, designed). Sessions with no Target group under "Unattributed" on the dashboard's **By-Target** view.
+_Avoid_: Product (too narrow — Hearloop generalizes beyond products), category (that's a topic of feedback, not its subject)
+
 **Hosted capture**:
 Hearloop-hosted page where an End user records using a **public token** URL. The recorder behind the **primary** in-person surface (reached via a Capture link / QR), and a fallback for online Partners who cannot embed the widget.
 _Avoid_: Partner demo site, widget embed key

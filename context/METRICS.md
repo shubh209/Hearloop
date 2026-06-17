@@ -24,9 +24,22 @@
 - Expected: ~0 — Target is carried in the capture link and written at session mint; no extra LLM/fetch
 - How measured (to capture after live E2E): finalize p95 from k6 smoke before/after
 
-> Pending live capture: attribution coverage (% sessions with a non-null Target) and
-> detection-source mix — measure once migration 007 is applied to Neon and one QR
-> session has flowed end-to-end.
+> Migration 007 is applied to Neon and the loop is verified locally (register → link →
+> mint → session config → dashboard target → bad-token 404). Pending live QR capture:
+> attribution coverage (% sessions with a non-null Target) once one phone session flows E2E.
+
+### Redis command volume (`/health/detailed` free-tier guard)
+- Metric: Upstash commands/day driven by uptime monitors polling `/health/detailed`
+- Before: ~36K/day (each poll opened a connection, PINGed, and ran full `getJobCounts()` per queue) — exhausted the 500K/mo cap, taking the pipeline down
+- After: ~7K/day — 60s snapshot cache + `getJobCounts('waiting')` only
+- Delta: ~-80% commands/day; swapped to a fresh instance (`exact-urchin-126881`) to restore service
+- How measured: Upstash console daily command graph; cache logic in `apps/api/src/routes/health.ts`
+
+### EC2 root volume disk usage
+- Metric: % used on the 20 GB gp3 root volume
+- Before: 100% (deploys blocked) — 55 orphaned Docker images / ~14 GB from repeated `--no-cache` builds
+- After: 18% (~17 GB free); `docker image prune -af` added to the deploy step so it can't recur
+- How measured: `df -h /` on EC2 before/after `docker image prune`; prune step in `.github/workflows/docker-image.yml`
 
 ---
 

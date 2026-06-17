@@ -49,7 +49,30 @@ Both are fully supported; we lead with the in-person surface because it matches 
 
 ---
 
-## Current State (Updated May 27, 2026)
+## Current State (Updated Jun 16, 2026)
+
+### Done ✅ (Session 9 — Direction A: in-person capture + real dashboard)
+
+#### Strategy / positioning
+- **Capture-surface decision locked** — one product, two surfaces; lead with the in-person surface (QR/SMS → hosted capture), keep the website widget secondary. See `context/CAPTURE_SURFACES.md`.
+- **Feedback Target designed** — `context/FEEDBACK_TARGET_DESIGN.md`: capture-link attribution for in-person (built, Phase 1); client-side page-context attribution for the widget (designed).
+
+#### Dashboard de-mocked (was mostly fake)
+- `apps/web/app/dashboard/page.tsx` now renders **only real data** from `buildDashboardPayload` — metric cards, recent/all sessions, top topics, sentiment donut, urgent alerts. Deleted `MOCK_SESSIONS / MOCK_TOPICS / LOCATIONS`; added loading/empty states; fixed the field-shape mismatch that would crash the Sessions tab (`sentimentScore` / `topics[]` / `createdAt`).
+- Partner name + initials replace hardcoded "Acme Motors / AC". Webhooks tab is now an honest pointer to settings.
+
+#### Capture links + QR (in-person surface) — Direction A headline
+- **Migration 007 `capture_links` applied to Neon** — durable, reusable token per partner, optional Target label/key, soft-delete via `active`.
+- `routes/capture-links.ts` — authed `POST/GET/DELETE /partners/me/capture-links`.
+- `routes/public.ts` — public `POST /public/capture/:linkToken/session` mints a fresh session and writes the Target into `metadata_json` (Phase 1, no `sessions` schema change).
+- `app/c/[link]/page.tsx` — QR/link target; mints a session and forwards to the existing hosted capture page (pipeline fully reused).
+- `components/CaptureLinksPanel.tsx` — create links, copy URL, render + download QR (`qrcode` dep). New "Capture links" dashboard tab.
+- **By-Target dashboard view** — sessions grouped by capture-link Target (sessions, positive %, urgent), replacing the Location mock. Client-side aggregation over the existing payload.
+- Verified end-to-end locally against Neon: register → create link → list → mint → session config → dashboard shows target → bad token 404.
+
+#### Infra fixes (both were production-breaking)
+- **Upstash Redis was maxed (500K/500K monthly cap)** — pipeline was down. Swapped to a fresh instance (`exact-urchin-126881`) in local + EC2 `.env`; verified healthy. `/health/detailed` now caches its snapshot 60s and counts only `waiting` jobs (~36K → ~7K cmds/day) so it can't burn the cap again.
+- **EC2 root volume hit 100%** — 55 orphaned Docker images (~14 GB) from repeated `--no-cache` deploys. Cleared to 18%; deploy script now runs `docker image prune -af` after each release.
 
 ### Done ✅ (Session 8 — Testing, Security & SDK)
 
@@ -134,34 +157,39 @@ Both are fully supported; we lead with the in-person surface because it matches 
 - None currently.
 
 ### Not Started ❌
-- Dashboard real-data E2E test (manual — run capture flow end-to-end)
+- **Live QR capture E2E** — scan a real capture link on a phone, record, confirm the attributed session lands on the dashboard (local API E2E done; not yet exercised against prod with real audio)
+- **Feedback Target Phase 2** — `feedback_targets` table + finalize-time upsert + `sessions.target_id` (migration 008); needed only when the identity-merge UI lands
+- Signage-friendly hosted capture page polish (large tap target, mic-permission guidance)
 - ZAP active scan execution (script written, needs `npm run build --workspace=apps/api` first)
 
 ---
 
 ## Current Blocker
 
-None. Pipeline is fully operational.
+None. Pipeline operational on the new Redis instance; Direction-A capture loop is live in code (deployed) and verified locally.
 
 ## P1 Next Steps
 
-1. **Manual E2E test** — sign up → record audio → verify dashboard shows transcript, sentiment, topics
-2. **ZAP active scan** — run `node testing/vulnerability-security/zap-active-scan.js` (needs local build first)
+1. **Live QR capture E2E against prod** — create a capture link in the dashboard, scan it, record, verify the By-Target view updates
+2. **Target Phase 2** — promote `metadata_json` Target to the `feedback_targets` table when the merge UI is needed
+3. **ZAP active scan** — run `node testing/vulnerability-security/zap-active-scan.js` (needs local build first)
 
 ---
 
-## Infrastructure (Updated May 19, 2026)
+## Infrastructure (Updated Jun 16, 2026)
 
 | Resource | Details | Cost |
 |---|---|---|
 | EC2 | t3.micro, us-east-2, Elastic IP `18.223.189.193`, port 3001 | ~$8/mo |
-| EBS | 20 GB gp3 root volume | ~$1.60/mo |
+| EBS | 20 GB gp3 root volume (deploy now prunes old images — see below) | ~$1.60/mo |
 | S3 | `hearloop-audio-prod`, 93.9 MB | ~$0.002/mo |
 | ECR | `hearloop-api`, ~75 MB, lifecycle policy active | $0 (free tier) |
 | Neon | PostgreSQL 16, serverless, auto-pause | $0 (free tier) |
-| Upstash | Redis, serverless, BullMQ-compatible | $0 (free tier) |
+| Upstash | Redis, serverless, BullMQ-compatible — instance `exact-urchin-126881` (old `absolute-yak` hit the 500K/mo cap) | $0 (free tier) |
 | Vercel | Web frontend | $0 (free tier) |
 | **Total** | | **~$9.60/mo** |
+
+**Free-tier guardrails:** `/health/detailed` caches 60s + counts only `waiting` jobs (keeps Upstash ~7K cmds/day). The EC2 deploy step runs `docker image prune -af` after each release so the 20 GB root volume can't fill (it did once: 55 images / ~14 GB).
 
 ---
 
@@ -169,28 +197,36 @@ None. Pipeline is fully operational.
 
 ```
 apps/api/src/
-  index.ts              — Fastify server, CORS, auth decorator (fetches business_context), worker start
+  index.ts              — Fastify server, CORS, auth decorators, route registration, worker start
   routes/sessions.ts    — authenticated session lifecycle
-  routes/public.ts      — public token routes (upload-url, finalize, create-token, session creation)
-  routes/partners.ts    — register/login/dashboard/settings (webhook_url, allowed_origins, business_context)
+  routes/public.ts      — public token routes (upload-url, finalize, create-token) + capture-link mint
+  routes/partners.ts    — register/login + legacy /:id dashboard & settings
+  routes/partner-me.ts  — cookie-auth /partners/me, /me/dashboard, /me/settings, embed/secret key mgmt
+  routes/partner-dashboard.ts — buildDashboardPayload (stats, topics, sessions incl. target)
+  routes/capture-links.ts     — authed /partners/me/capture-links create/list/deactivate
+  routes/health.ts      — /health/detailed (cached 60s, waiting-only queue counts)
   lib/env.ts            — startup env var validation
   lib/logger.ts         — shared Pino logger + jobLogger(name) child helper
-  lib/claude.ts         — Bedrock Nova Lite + Haiku fallback; accepts businessContext option, injects into prompt
+  lib/claude.ts         — Bedrock Nova Lite + Haiku fallback; injects businessContext into prompt
   lib/groq.ts           — Whisper transcription wrapper
   lib/queue.ts          — BullMQ queues + workers (drainDelay:600, stalledInterval:600000) + enqueue helpers
   lib/storage.ts        — S3 signed URL helpers
-  lib/db.ts             — Kysely + pg; PartnersTable includes business_context field
+  lib/target-key.ts     — normalizeTargetKey() for stable Target grouping
+  lib/db.ts             — Kysely + pg; includes CaptureLinksTable
   jobs/validate-recording.ts  — MIME/size validation
   jobs/transcribe.ts    — storage → Groq → store → enqueueAnalyze
-  jobs/analyze.ts       — fetches partner business_context from DB → Bedrock → update analysis → complete → enqueueWebhook
+  jobs/analyze.ts       — fetches partner business_context → Bedrock → update analysis → enqueueWebhook
   jobs/deliver-webhook.ts     — HMAC webhook + SSRF guard + retries
   jobs/expire-session.ts      — cleans up expired sessions on a schedule
 
 apps/web/
   app/login/page.tsx         — login/signup + API key reveal modal on signup
-  app/dashboard/page.tsx     — dashboard + missing key banner + 30s auto-refresh
+  app/dashboard/page.tsx     — dashboard (real data only); tabs incl. Capture links + By-Target view
   app/capture/[token]/page.tsx — hosted capture shell
-  components/Recorder.tsx    — voice recorder with origin validation
+  app/c/[link]/page.tsx      — capture-link entry: mints a session, forwards to /capture/[token]
+  components/Recorder.tsx     — voice recorder with origin validation
+  components/CaptureLinksPanel.tsx — create capture links, copy URL, QR generate/download
+  components/EmbedSettingsPanel.tsx / ApiSettingsPanel.tsx — settings tabs
   public/widget.js           — embeddable widget (token-based session creation)
 
 packages/db/migrations/
@@ -199,6 +235,8 @@ packages/db/migrations/
   003_metrics_columns.sql        — model_used, input/output_tokens, processing timestamps
   004_session_create_tokens.sql  — session_create_tokens table for token-based auth
   005_business_context.sql       — business_context TEXT column on partners
+  006_api_key_types.sql          — api_keys.type (public embed vs secret)
+  007_capture_links.sql          — capture_links table (durable QR/SMS entry points)
 ```
 
 ## Testing Suite
@@ -236,8 +274,17 @@ testing/
 ```
 POST   /partners/register
 POST   /partners/login
-GET    /partners/:id/dashboard            Bearer API key
-PATCH  /partners/:id/settings             Bearer API key  — webhook_url, allowed_origins, business_context
+GET    /partners/:id/dashboard            Bearer API key   (legacy; prefer /partners/me/dashboard)
+PATCH  /partners/:id/settings             Bearer API key
+
+GET    /partners/me                       partner session  — profile, key prefixes
+GET    /partners/me/dashboard             partner session  — stats, topics, sessions (incl. target)
+PATCH  /partners/me/settings              partner session  — webhook_url, allowed_origins, business_context
+POST   /partners/me/embed/regenerate      partner session  — rotate public embed key
+POST   /partners/me/secret-keys           partner session  — mint a secret key
+POST   /partners/me/capture-links         partner session  — create a capture link (optional Target)
+GET    /partners/me/capture-links         partner session  — list active capture links
+DELETE /partners/me/capture-links/:id     partner session  — deactivate a capture link
 
 POST   /sessions                          Bearer API key
 GET    /sessions/:id                      Bearer API key
@@ -252,7 +299,10 @@ GET    /public/session/:token/upload-url  public
 POST   /public/session/:token/finalize    public
 POST   /public/sessions/create-token      public (apiKey) — returns 10-min TTL token
 POST   /public/sessions                   Bearer token (session-create token) — create session with token
+POST   /public/capture/:linkToken/session public — mint a session from a durable capture link (QR/SMS)
 ```
+
+(`partner session` = `hlps.*` cookie/Bearer token from register/login; a secret `sk-live_` key also works.)
 
 ---
 
