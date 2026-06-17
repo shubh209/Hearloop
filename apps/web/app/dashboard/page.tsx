@@ -5,6 +5,7 @@ import { useState, useEffect, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { EmbedSettingsPanel } from "../../components/EmbedSettingsPanel";
 import { ApiSettingsPanel } from "../../components/ApiSettingsPanel";
+import { CaptureLinksPanel } from "../../components/CaptureLinksPanel";
 
 // ── Display helpers ─────────────────────────────────────────
 const TOPIC_COLORS = ["#E24B4A", "#EF9F27", "#1D9E75", "#378ADD", "#888"];
@@ -34,7 +35,7 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-type NavItem = "dashboard" | "sessions" | "analytics" | "alerts" | "embed" | "apikeys" | "webhooks";
+type NavItem = "dashboard" | "sessions" | "analytics" | "alerts" | "capture" | "embed" | "apikeys" | "webhooks";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -659,6 +660,10 @@ export default function DashboardPage() {
                 <span className="ni-badge">{urgentOnlyCount}</span>
               )}
             </div>
+            <div className={`ni ${nav === "capture" ? "active" : ""}`} onClick={() => setNav("capture")}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="1.5" width="4" height="4" rx="0.8" stroke="currentColor" strokeWidth="1.1"/><rect x="8.5" y="1.5" width="4" height="4" rx="0.8" stroke="currentColor" strokeWidth="1.1"/><rect x="1.5" y="8.5" width="4" height="4" rx="0.8" stroke="currentColor" strokeWidth="1.1"/><path d="M8.5 8.5h2m2 0v2m-4 2h2" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>
+              Capture links
+            </div>
 
             <div className="ns">Settings</div>
             <div className={`ni ${nav === "embed" ? "active" : ""}`} onClick={() => setNav("embed")}>
@@ -700,6 +705,7 @@ export default function DashboardPage() {
                 {nav === "sessions" && "Sessions"}
                 {nav === "analytics" && "Analytics"}
                 {nav === "alerts" && "Urgent alerts"}
+                {nav === "capture" && "Capture links"}
                 {nav === "embed" && "Widget embed"}
                 {nav === "apikeys" && "API access"}
                 {nav === "webhooks" && "Webhooks"}
@@ -937,6 +943,7 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {nav === "capture" && <CaptureLinksPanel />}
             {nav === "embed" && <EmbedSettingsPanel />}
             {nav === "apikeys" && <ApiSettingsPanel />}
 

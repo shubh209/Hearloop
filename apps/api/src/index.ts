@@ -24,6 +24,7 @@ import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
 import { partnerRoutes } from "./routes/partners";
 import { partnerMeRoutes } from "./routes/partner-me";
+import { captureLinkRoutes } from "./routes/capture-links";
 import { healthRoutes } from "./routes/health";
 import {
   authenticatePartner,
@@ -127,6 +128,7 @@ const start = async () => {
       await app.register(publicRoutes, { prefix: "/v1" });
       await app.register(partnerRoutes, { prefix: "/v1" });
       await app.register(partnerMeRoutes, { prefix: "/v1" });
+      await app.register(captureLinkRoutes, { prefix: "/v1" });
       await app.register(healthRoutes);
 
       // 3. Listen

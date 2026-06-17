@@ -106,6 +106,16 @@ export interface SessionCreateTokensTable {
   created_at: Generated<Date>;
 }
 
+export interface CaptureLinksTable {
+  id: string;
+  partner_id: string;
+  token: string;
+  target_label: string | null;
+  target_key: string | null;
+  active: Generated<boolean>;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   sessions: SessionsTable;
   recordings: RecordingsTable;
@@ -114,6 +124,7 @@ export interface Database {
   partners: PartnersTable;
   webhook_deliveries: WebhookDeliveriesTable;
   session_create_tokens: SessionCreateTokensTable;
+  capture_links: CaptureLinksTable;
 }
 
 const pool = new Pool({

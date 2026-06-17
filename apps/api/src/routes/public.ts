@@ -377,4 +377,69 @@ export async function publicRoutes(app: FastifyInstance) {
       return reply.send({ sessionId: session.id, status: "submitted" });
     }
   );
+
+  // POST /public/capture/:linkToken/session — mint a fresh session from a durable
+  // capture link (QR/SMS surface). The link's Target is attributed onto the new
+  // session via metadata_json. Returns a session public_token the hosted capture
+  // page consumes with the existing open/upload-url/finalize flow.
+  app.post(
+    "/public/capture/:linkToken/session",
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const { linkToken } = req.params as { linkToken: string };
+
+      const link = await db
+        .selectFrom("capture_links")
+        .innerJoin("partners", "partners.id", "capture_links.partner_id")
+        .select([
+          "capture_links.partner_id",
+          "capture_links.target_label",
+          "capture_links.target_key",
+          "capture_links.active",
+          "partners.default_config_json",
+        ])
+        .where("capture_links.token", "=", linkToken)
+        .executeTakeFirst();
+
+      if (!link || !link.active) {
+        return reply.code(404).send({ error: "capture_link_not_found" });
+      }
+
+      const config = link.default_config_json
+        ? JSON.parse(link.default_config_json)
+        : {};
+
+      const sessionId = randomUUID();
+      const sessionToken = randomUUID();
+      const now = new Date();
+
+      await db
+        .insertInto("sessions")
+        .values({
+          id: sessionId,
+          partner_id: link.partner_id,
+          public_token: sessionToken,
+          status: "created",
+          max_duration_sec: config.maxDurationSec ?? 5,
+          metadata_json: JSON.stringify({
+            promptText: config.promptText,
+            consentRequired: config.consentRequired ?? false,
+            consentText: config.consentText,
+            target: link.target_label
+              ? {
+                  label: link.target_label,
+                  key: link.target_key,
+                  source: "capture-link",
+                }
+              : null,
+          }),
+          external_event_id: null,
+          expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          created_at: now,
+          updated_at: now,
+        })
+        .execute();
+
+      return reply.code(201).send({ sessionId, sessionToken });
+    }
+  );
 }

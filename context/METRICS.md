@@ -5,6 +5,31 @@
 
 ---
 
+## Dashboard de-mock + Capture links (Direction A) — Jun 16, 2026
+
+### Dashboard "real data" ratio
+- Metric: mock data arrays still rendered in `apps/web/app/dashboard/page.tsx`
+- Before: 3 (`MOCK_SESSIONS`, `MOCK_TOPICS`, `LOCATIONS`) + hardcoded metric cards, donut, webhooks
+- After: 0 — every panel reads `buildDashboardPayload` with loading/empty states
+- How measured: `rg "MOCK_|LOCATIONS" apps/web/app/dashboard/page.tsx` (only CSS comment remains)
+
+### Partner setup effort to attribute feedback to a location/service (in-person)
+- Metric: # of steps for a non-technical owner to start collecting attributed feedback
+- Before: N/A — required website traffic + embedding `@hearloop/react` + configuring `allowed_origins`
+- After: 1 — type a label → "New link" → print the QR. No website, no code.
+- How measured: click-path in dashboard → Capture links
+
+### Added pipeline latency from attribution
+- Metric: finalize p95 before vs after Target attribution
+- Expected: ~0 — Target is carried in the capture link and written at session mint; no extra LLM/fetch
+- How measured (to capture after live E2E): finalize p95 from k6 smoke before/after
+
+> Pending live capture: attribution coverage (% sessions with a non-null Target) and
+> detection-source mix — measure once migration 007 is applied to Neon and one QR
+> session has flowed end-to-end.
+
+---
+
 ## Infrastructure Migration — May 16, 2026
 
 ### AWS Monthly Cost

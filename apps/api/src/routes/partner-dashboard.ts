@@ -117,6 +117,12 @@ export async function buildDashboardPayload(partnerId: string) {
     } catch {
       /* ignore */
     }
+    let meta: any = {};
+    try {
+      meta = s.metadata_json ? JSON.parse(s.metadata_json) : {};
+    } catch {
+      /* ignore */
+    }
 
     return {
       id: s.id,
@@ -127,6 +133,7 @@ export async function buildDashboardPayload(partnerId: string) {
       sentiment: s.sentiment_label,
       sentimentScore: s.sentiment_score,
       topics: sessionTopics,
+      target: meta.target ?? null,
       urgency: moderation.urgency ?? "none",
       summary: moderation.summary ?? "",
       qualityFlags: moderation.qualityFlags ?? [],
