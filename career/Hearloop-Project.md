@@ -2,7 +2,7 @@
 
 ## Tagline
 
-Voice feedback for local businesses. Customers speak for a few seconds instead of filling out a form. Owners see analyzed feedback on a dashboard.
+Voice feedback for service businesses. A customer scans a QR code (or taps a link or on-site widget), speaks for a few seconds instead of filling out a form, and leaves. Owners see analyzed feedback per location or product on a dashboard.
 
 ## Tech Stack (Languages / Frameworks / Infrastructure / Tools)
 
@@ -22,9 +22,9 @@ Without that signal, owners fall back on spreadsheet exports, voicemails, or sta
 
 ## Solution
 
-Hearloop replaces the form with a short voice clip. A business embeds a widget on its site or sends customers to a hosted capture page. The customer taps, speaks, and leaves. The system uploads audio to S3, transcribes it, runs classification, and stores results the owner can read on a dashboard. Optional webhooks push structured JSON to tools the business already uses.
+Hearloop replaces the form with a short voice clip. There are two capture surfaces for one product. The **primary** surface is in-person: a QR code or SMS link opens a hosted capture page — printed on a receipt or counter sign so feedback happens where the service does (lead vertical: quick-service automotive). The **secondary** surface is an embeddable website widget for online businesses whose customers are already on the page. Either way the customer taps, speaks, and leaves. The system uploads audio to S3, transcribes it, runs classification, and stores results the owner can read on a dashboard. Optional webhooks push structured JSON to tools the business already uses.
 
-Built for small local businesses that need feedback without hiring engineers to wire up speech or AI themselves.
+Built for service businesses that need feedback without hiring engineers to wire up speech or AI themselves. The website widget targets online businesses; the QR/link surface targets the in-person service businesses where most customer-service moments actually happen.
 
 ## My Role
 
@@ -42,7 +42,7 @@ Not built on purpose: billing, native mobile app, multi language UI. If I starte
 
 ## Features (current)
 
-Capture: embeddable widget, hosted capture page, `@hearloop/react` with `embedKey`, MediaRecorder in the browser, signed direct upload to S3.
+Capture (two surfaces): QR code / link → hosted capture page (primary, in-person) and embeddable website widget / `@hearloop/react` with `embedKey` (secondary, online). MediaRecorder in the browser, signed direct upload to S3 on both.
 
 Auth and keys: email login with httpOnly session cookie; public embed keys (`pk-live_`) for the widget; secret keys (`sk-live_`) optional in settings; origin allowlist before embed works; ten minute single use session create tokens.
 
@@ -105,7 +105,7 @@ Production partner count, live session volume, webhook delivery success rate at 
 
 ## How It Works
 
-The business sets allowed embed origins and a webhook URL in the dashboard, then adds the widget or shares a capture link. The browser trades a public embed key for a short lived token, opens a session, records audio, uploads to S3 with a signed URL, and calls finalize. The customer is done. Workers on EC2 pick up the job: check the file, transcribe with Groq, classify with Bedrock (Haiku if JSON parse fails), save to Postgres, mark complete, POST signed JSON to the webhook if configured. The dashboard reads stats over authenticated REST. The Next.js app on Vercel proxies HTTPS to EC2 so the browser does not hit mixed content errors.
+The business configures a webhook URL in the dashboard and gets a capture surface: a QR code / link to the hosted capture page for in-person use (primary), or a website widget gated by allowed embed origins for online use (secondary). The browser opens a session (the widget path trades a public embed key for a short lived token first), records audio, uploads to S3 with a signed URL, and calls finalize. The customer is done. Workers on EC2 pick up the job: check the file, transcribe with Groq, classify with Bedrock (Haiku if JSON parse fails), save to Postgres, mark complete, POST signed JSON to the webhook if configured. The dashboard reads stats over authenticated REST. The Next.js app on Vercel proxies HTTPS to EC2 so the browser does not hit mixed content errors.
 
 Tradeoffs worth knowing:
 

@@ -11,9 +11,13 @@
 
 ## What It Is
 
-Hearloop is a **multi-tenant voice micro-feedback platform**. A business embeds a JS widget or sends customers to a hosted capture page. The customer taps, speaks for 5 seconds, done. The business receives structured JSON via webhook: transcript, sentiment, topics, urgency, quality flags, moderation flags.
+Hearloop is a **multi-tenant voice micro-feedback platform**. The customer taps, speaks for 5 seconds, done. The business receives structured JSON via webhook: transcript, sentiment, topics, urgency, quality flags, moderation flags.
 
-Target: automotive service, healthcare, hospitality, retail — anywhere in-person interactions happen and survey completion is <5%.
+**One product, two capture surfaces** (see `context/CAPTURE_SURFACES.md`):
+- **Primary — in-person:** a **QR code / SMS link → hosted capture page**. Lead vertical: **quick-service automotive** (also clinics, salons, hospitality). The feedback moment is in-person, so capture meets the customer at the receipt/counter/bay, not on a website.
+- **Secondary — online:** an embedded **website widget** (`widget.js` / `@hearloop/react`) for partners with real web traffic (e-commerce, online booking/confirmation pages).
+
+Both are fully supported; we lead with the in-person surface because it matches the core value prop (survey completion <5%) and demos without needing website traffic.
 
 ---
 

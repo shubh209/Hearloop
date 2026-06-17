@@ -68,8 +68,16 @@ _Avoid_: Capture page (that's Hearloop-hosted), dashboard (that's Partner admin 
 Dashboard area where a Partner configures **Allowed origins** and copies their **Widget embed key** for `@hearloop/react`. Separate from signup.
 _Avoid_: API settings (secret keys), webhook settings (different concern)
 
+**Capture surface**:
+Where an End user reaches the recorder. Hearloop has two: the **primary** in-person surface (a **Capture link / QR** → Hosted capture, for service businesses) and the **secondary** online surface (the **Widget embed** on a Partner's website). Same Session lifecycle and Pipeline behind both.
+_Avoid_: Channel (reserve for Insights delivery — dashboard vs webhook)
+
+**Capture link / QR**:
+A stable public URL (rendered as a QR code or sent by SMS) that opens the Hosted capture page for in-person feedback — printed on receipts, counter signage, or service-bay cards. May encode a **Target** (location/service). The primary capture surface.
+_Avoid_: Widget embed (that's the online surface), public token (that's per-Session)
+
 **Hosted capture**:
-Hearloop-hosted page where an End user records using a **public token** URL. Alternative to embedding **@hearloop/react** on the Partner's own site. Not required for the Partner demo site milestone.
+Hearloop-hosted page where an End user records using a **public token** URL. The recorder behind the **primary** in-person surface (reached via a Capture link / QR), and a fallback for online Partners who cannot embed the widget.
 _Avoid_: Partner demo site, widget embed key
 
 **Allowed origins**:
