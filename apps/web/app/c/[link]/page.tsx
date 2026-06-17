@@ -6,6 +6,7 @@
 // scan produces a new session attributed to the link's Target.
 
 import { redirect } from "next/navigation";
+import { serverApiBase } from "../../../lib/server-api-base";
 
 interface CaptureLinkPageProps {
   params: Promise<{ link: string }>;
@@ -14,8 +15,13 @@ interface CaptureLinkPageProps {
 async function mintSession(linkToken: string): Promise<{ sessionToken: string } | null> {
   try {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/public/capture/${linkToken}/session`,
-      { method: "POST", cache: "no-store" }
+      `${serverApiBase()}/public/capture/${linkToken}/session`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        cache: "no-store",
+      }
     );
     if (!res.ok) return null;
     return res.json();

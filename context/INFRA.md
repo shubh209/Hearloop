@@ -112,6 +112,7 @@ ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193 \
 | `BEDROCK_ACCESS_KEY_ID` | IAM key with Bedrock access |
 | `BEDROCK_SECRET_ACCESS_KEY` | IAM secret |
 | `WEBHOOK_SIGNING_SECRET` | HMAC secret for webhook signatures |
+| `PARTNER_SESSION_SECRET` | HMAC secret for `hlps.*` dashboard session tokens (register/login) — **required**; generate with `openssl rand -base64 32` |
 
 ---
 
@@ -119,7 +120,7 @@ ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193 \
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://hearloop.vercel.app/api` — **not** `/api/v1` (proxy adds `/v1`). Using `/api/v1` breaks server-side capture page fetch (404). |
+| `NEXT_PUBLIC_API_URL` | Optional. Prefer omitting — server pages use `/api` proxy via `serverApiBase()`; Recorder defaults to `/api`. If set, use `https://hearloop.vercel.app/api` (**not** `/api/v1`). |
 
 ---
 

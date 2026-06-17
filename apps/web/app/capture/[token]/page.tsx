@@ -2,6 +2,7 @@
 
 import { notFound } from "next/navigation";
 import Recorder from "../../../components/Recorder";
+import { serverApiBase } from "../../../lib/server-api-base";
 
 interface CapturePageProps {
   params: Promise<{ token: string }>;
@@ -10,7 +11,7 @@ interface CapturePageProps {
 async function getSessionConfig(token: string) {
   try {
     const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/public/session/${token}`,
+      `${serverApiBase()}/public/session/${token}`,
       { cache: "no-store" }
     );
     if (!res.ok) return null;

@@ -21,7 +21,7 @@ export function CaptureLinksPanel() {
   const [error, setError] = useState("");
 
   const load = () => {
-    fetch("/api/v1/partners/me/capture-links")
+    fetch("/api/partners/me/capture-links")
       .then((r) => r.json())
       .then((data) => {
         setLinks(data.links ?? []);
@@ -38,7 +38,7 @@ export function CaptureLinksPanel() {
   const createLink = async () => {
     setCreating(true);
     setError("");
-    const res = await fetch("/api/v1/partners/me/capture-links", {
+    const res = await fetch("/api/partners/me/capture-links", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ targetLabel: label.trim() || undefined }),
@@ -54,7 +54,7 @@ export function CaptureLinksPanel() {
   };
 
   const deactivate = async (id: string) => {
-    await fetch(`/api/v1/partners/me/capture-links/${id}`, { method: "DELETE" });
+    await fetch(`/api/partners/me/capture-links/${id}`, { method: "DELETE" });
     load();
   };
 

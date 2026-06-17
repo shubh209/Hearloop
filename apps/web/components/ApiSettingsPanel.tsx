@@ -9,7 +9,7 @@ export function ApiSettingsPanel() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetch("/api/v1/partners/me")
+    fetch("/api/partners/me")
       .then((r) => r.json())
       .then((data) => {
         setSecretPrefix(data.hasSecretKey ? data.secretKeyPrefix : null);
@@ -19,7 +19,7 @@ export function ApiSettingsPanel() {
   }, []);
 
   const generate = async () => {
-    const res = await fetch("/api/v1/partners/me/secret-keys", { method: "POST" });
+    const res = await fetch("/api/partners/me/secret-keys", { method: "POST" });
     const data = await res.json();
     if (res.ok) setSecretOnce(data.secretKey);
   };

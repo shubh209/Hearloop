@@ -9,6 +9,7 @@ const REQUIRED: Record<string, string> = {
   BEDROCK_REGION:            "Bedrock region (e.g. us-east-2)",
   GROQ_API_KEY:              "Groq API key for Whisper transcription",
   WEBHOOK_SIGNING_SECRET:    "HMAC secret for signing webhook payloads",
+  PARTNER_SESSION_SECRET:    "HMAC secret for hlps.* dashboard session tokens",
   STORAGE_REGION:            "S3/R2 storage region",
   STORAGE_BUCKET:            "S3/R2 bucket name for audio files",
   STORAGE_ACCESS_KEY_ID:     "S3/R2 access key ID",

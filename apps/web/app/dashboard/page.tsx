@@ -68,7 +68,7 @@ export default function DashboardPage() {
     }
 
     const fetchDashboard = () =>
-      fetch(`/api/v1/partners/me/dashboard`)
+      fetch(`/api/partners/me/dashboard`)
         .then(r => {
           if (r.status === 401) {
             // Cookie expired or missing — redirect to login

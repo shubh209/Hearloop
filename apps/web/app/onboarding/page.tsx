@@ -18,7 +18,7 @@ export default function OnboardingPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/v1/partners/me/settings", {
+      const res = await fetch("/api/partners/me/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessContext: context }),

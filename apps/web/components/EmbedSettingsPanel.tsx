@@ -19,7 +19,7 @@ export function EmbedSettingsPanel() {
   const [copied, setCopied] = useState(false);
 
   const load = () => {
-    fetch("/api/v1/partners/me")
+    fetch("/api/partners/me")
       .then((r) => r.json())
       .then((data) => {
         setProfile(data);
@@ -37,7 +37,7 @@ export function EmbedSettingsPanel() {
   const saveSettings = async () => {
     setSaving(true);
     setError("");
-    const res = await fetch("/api/v1/partners/me/settings", {
+    const res = await fetch("/api/partners/me/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -56,7 +56,7 @@ export function EmbedSettingsPanel() {
 
   const revealEmbedKey = async () => {
     setError("");
-    const res = await fetch("/api/v1/partners/me/embed/regenerate", {
+    const res = await fetch("/api/partners/me/embed/regenerate", {
       method: "POST",
     });
     const data = await res.json();

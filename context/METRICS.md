@@ -41,6 +41,13 @@
 - After: 18% (~17 GB free); `docker image prune -af` added to the deploy step so it can't recur
 - How measured: `df -h /` on EC2 before/after `docker image prune`; prune step in `.github/workflows/docker-image.yml`
 
+### Capture-link attribution E2E (API, Jun 17 2026)
+- Metric: % of minted sessions with non-null Target on dashboard payload
+- Before: N/A (feature new)
+- After: 100% (3/3 automated runs) — `target.source=capture-link`, label/key match capture link
+- How measured: `node testing/capture-link-e2e.js` against `https://18-223-189-193.nip.io/v1`
+- Note: automated script uses synthetic audio → pipeline `failed` after validate/transcribe; phone scan with real mic proves full `completed` path
+
 ---
 
 ## Infrastructure Migration — May 16, 2026
