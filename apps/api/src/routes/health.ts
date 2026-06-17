@@ -5,6 +5,12 @@
 //
 // All four checks run concurrently via Promise.allSettled with a 10s timeout.
 // Always returns HTTP 200 — "healthy" when all pass, "degraded" otherwise.
+//
+// Free-tier protection: this endpoint touches Redis (PING + queue counts), so
+// uptime monitors polling it every minute would otherwise burn ~30K Upstash
+// commands/day. The computed snapshot is cached for HEALTH_CACHE_TTL_MS (60s
+// default) so Redis is hit at most once per minute regardless of poll rate.
+// Cache is disabled under tests (NODE_ENV=test) and tunable via env.
 
 import { FastifyInstance } from 'fastify';
 import IORedis from 'ioredis';
@@ -136,9 +142,12 @@ export async function checkRedis(): Promise<CheckResult> {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch waiting job counts for all four BullMQ queues via a single
- * short-lived IORedis connection. getJobCounts() is read-only and safe to
- * share across Queue instances (no blocking commands).
+ * Fetch the waiting job count for all four BullMQ queues via a single
+ * short-lived IORedis connection.
+ *
+ * We pass the explicit "waiting" type to getJobCounts so BullMQ issues ONE
+ * Redis command per queue (LLEN). Calling it with no args counts every job
+ * state (~8 commands per queue) — wasteful on Upstash's per-command free tier.
  */
 export async function checkQueues(): Promise<QueueDepths | { status: 'error'; error: string }> {
   const conn = new IORedis(process.env.REDIS_URL!, {
@@ -160,7 +169,7 @@ export async function checkQueues(): Promise<QueueDepths | { status: 'error'; er
   try {
     const settled = await Promise.allSettled(
       entries.map(({ key, queue }) =>
-        queue.getJobCounts().then((c) => ({ key, waiting: c.waiting ?? 0 }))
+        queue.getJobCounts('waiting').then((c) => ({ key, waiting: c.waiting ?? 0 }))
       )
     );
     const firstError = settled.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
@@ -224,45 +233,70 @@ export async function checkPipeline(): Promise<PipelineStats> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Run all four checks and assemble the HealthResponse. This is the expensive
+ * path (it touches Redis + the DB) — callers should cache the result.
+ */
+export async function buildHealthBody(): Promise<HealthResponse> {
+  const timeoutResult: CheckResult = { status: 'error', error: 'timeout' };
+  const allTimeoutFallback: PromiseSettledResult<
+    CheckResult | QueueDepths | { status: 'error'; error: string } | PipelineStats
+  >[] = [
+    { status: 'fulfilled', value: timeoutResult },
+    { status: 'fulfilled', value: timeoutResult },
+    { status: 'fulfilled', value: timeoutResult },
+    { status: 'fulfilled', value: timeoutResult },
+  ];
+
+  const [dbResult, redisResult, queuesResult, pipelineResult] = await withTimeout(
+    Promise.allSettled([checkDatabase(), checkRedis(), checkQueues(), checkPipeline()]),
+    HEALTH_TIMEOUT_MS,
+    allTimeoutFallback
+  );
+
+  const unwrap = <T>(r: PromiseSettledResult<T>): T | { status: 'error'; error: string } =>
+    r.status === 'fulfilled' ? r.value : { status: 'error' as const, error: String((r as PromiseRejectedResult).reason) };
+
+  const database = unwrap(dbResult) as CheckResult;
+  const redis = unwrap(redisResult) as CheckResult;
+  const queueDepths = unwrap(queuesResult) as QueueDepths | { status: 'error'; error: string };
+  const pipeline = unwrap(pipelineResult) as PipelineStats;
+
+  const isHealthy =
+    database.status === 'ok' &&
+    redis.status === 'ok' &&
+    !('status' in queueDepths) &&
+    pipeline.status === 'ok';
+
+  return {
+    status: isHealthy ? 'healthy' : 'degraded',
+    checks: { database, redis, queueDepths, pipeline },
+  };
+}
+
+// Snapshot cache — caps Redis usage at ~once per TTL regardless of poll rate.
+// 0 disables the cache (default under tests so each call recomputes).
+const HEALTH_CACHE_TTL_MS = Number(
+  process.env.HEALTH_CACHE_TTL_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 60_000)
+);
+
+let healthCache: { at: number; body: HealthResponse } | null = null;
+
+/**
  * Registers GET /health/detailed. Public — no preHandler.
  * Always returns HTTP 200. "healthy" when all checks pass, "degraded" otherwise.
+ * Serves a cached snapshot for up to HEALTH_CACHE_TTL_MS to protect the Redis
+ * free tier from frequent uptime-monitor polling.
  */
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health/detailed', async (_req, reply) => {
-    const timeoutResult: CheckResult = { status: 'error', error: 'timeout' };
-    const allTimeoutFallback: PromiseSettledResult<
-      CheckResult | QueueDepths | { status: 'error'; error: string } | PipelineStats
-    >[] = [
-      { status: 'fulfilled', value: timeoutResult },
-      { status: 'fulfilled', value: timeoutResult },
-      { status: 'fulfilled', value: timeoutResult },
-      { status: 'fulfilled', value: timeoutResult },
-    ];
+    const now = Date.now();
 
-    const [dbResult, redisResult, queuesResult, pipelineResult] = await withTimeout(
-      Promise.allSettled([checkDatabase(), checkRedis(), checkQueues(), checkPipeline()]),
-      HEALTH_TIMEOUT_MS,
-      allTimeoutFallback
-    );
+    if (HEALTH_CACHE_TTL_MS > 0 && healthCache && now - healthCache.at < HEALTH_CACHE_TTL_MS) {
+      return reply.code(200).send(healthCache.body);
+    }
 
-    const unwrap = <T>(r: PromiseSettledResult<T>): T | { status: 'error'; error: string } =>
-      r.status === 'fulfilled' ? r.value : { status: 'error' as const, error: String((r as PromiseRejectedResult).reason) };
-
-    const database = unwrap(dbResult) as CheckResult;
-    const redis = unwrap(redisResult) as CheckResult;
-    const queueDepths = unwrap(queuesResult) as QueueDepths | { status: 'error'; error: string };
-    const pipeline = unwrap(pipelineResult) as PipelineStats;
-
-    const isHealthy =
-      database.status === 'ok' &&
-      redis.status === 'ok' &&
-      !('status' in queueDepths) &&
-      pipeline.status === 'ok';
-
-    const body: HealthResponse = {
-      status: isHealthy ? 'healthy' : 'degraded',
-      checks: { database, redis, queueDepths, pipeline },
-    };
+    const body = await buildHealthBody();
+    healthCache = { at: now, body };
 
     return reply.code(200).send(body);
   });
