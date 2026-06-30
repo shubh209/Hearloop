@@ -30,6 +30,8 @@
 | **Turborepo / npm workspaces** | Monorepo build orchestration across apps and packages |
 | **MediaRecorder API** | Browser audio capture in widget, recorder, and React SDK |
 | **bcrypt / crypto** | Partner password hashing, API key hashing, HMAC webhook signatures |
+| **Python / FastAPI** | HTTP only scraper sidecar for business context import |
+| **Crawl4AI** | Static homepage crawl that drafts business context (Apache 2.0, no browser on v1) |
 
 ## Features (verified)
 
@@ -38,6 +40,7 @@
 | Partner signup and email login | Businesses onboard without engineering help to start collecting feedback |
 | Partner dashboard with session stats | Owners see analyzed feedback in one place instead of scattered exports |
 | Onboarding business context | Summaries reference their actual services not generic visit language |
+| Business context import from website | Owner pastes their URL; the site is read and a draft description is generated for review, so setup needs no hand written copy |
 | Embeddable widget (`widget.js`) | Businesses add capture to existing site without rebuilding their app |
 | `@hearloop/react` SDK | React partners embed capture with tested hook and component |
 | Hosted capture page | Share a link when embed is not possible |
@@ -88,6 +91,7 @@ Hearloop was built for real businesses that struggle to collect honest customer 
 | OWASP ZAP baseline checks passed | 65/65 | [MEASURED] |
 | `@hearloop/react` ESM bundle (gzipped) | 5,603 bytes | [MEASURED] |
 | React SDK tests passing | 72 | [MEASURED] |
+| Business context import spike (5 automotive homepages) | 5/5 success; 572 ms p95 local / 358 ms EC2 Docker | [MEASURED] |
 | Rate limit correctness tests | 9/9 passing | [MEASURED] |
 | Redis idle command rate (BullMQ fix) | ~691K/day → ~5.7K/day projected | [MEASURED] |
 | Spike test errors at 500 instant users | 1.19%, recovery &lt;10 s | [MEASURED] |
@@ -190,7 +194,16 @@ Keywords: [AWS Bedrock, LLM, SQL, AI architecture, AWS S3]
 Metric type: [ESTIMATE] (qualitative relevance lift from business context in prompts)
 Business outcome: Retention strategy informed by feedback that reflects each business, not generic summaries.
 
-Interview detail (not on resume): Groq Whisper for STT; Nova Lite primary with Haiku fallback; business context is prompt injection, not RAG; built solo with AI assisted development tools.
+---
+
+**Bullet A4 (business context import):**
+Built a website import feature with Python, LLMs, AWS Bedrock, and SQL that reads a business's public site and drafts its profile for review so owners get feedback analysis tuned to their own services without writing setup copy they usually skip.
+
+Keywords: [Python, LLMs, AWS Bedrock, SQL]
+Metric type: [MEASURED] (import feasibility spike: 5/5 homepages, 572 ms p95 local / 358 ms EC2 Docker)
+Business outcome: Owners get analysis tuned to their services without writing the setup copy they usually skip.
+
+Interview detail (not on resume): Groq Whisper for STT; Nova Lite primary with Haiku fallback; business context is prompt injection, not RAG; import crawls with Crawl4AI behind an SSRF guard; built solo with AI assisted development tools.
 
 ---
 
