@@ -7,7 +7,11 @@ import { db } from "../lib/db";
 import { getUploadSignedUrl } from "../lib/storage";
 import { enqueueValidate } from "../lib/queue";
 import { logger } from "../lib/logger";
-import { lookupPartnerByApiKey, isOriginAllowed } from "../lib/lookup-api-key";
+import {
+  lookupPartnerByApiKey,
+  isOriginAllowed,
+  parseAllowedOrigins,
+} from "../lib/lookup-api-key";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -226,9 +230,10 @@ export async function publicRoutes(app: FastifyInstance) {
         promptText: config.promptText ?? null,
         consentRequired: config.consentRequired ?? false,
         consentText: config.consentText ?? null,
-        allowedOrigins: session.allowed_origins
-          ? JSON.parse(session.allowed_origins)
-          : [],
+        // allowed_origins is stored comma-separated (see partner-me.ts /
+        // partners.ts write paths) — parse it the same way every other
+        // read site does, not as JSON.
+        allowedOrigins: parseAllowedOrigins(session.allowed_origins),
         expiresAt: session.expires_at,
       });
     }
