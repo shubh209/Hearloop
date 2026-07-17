@@ -253,6 +253,40 @@ describe("Property 3b: Emit called exactly once for 'nova-lite' or 'haiku-fallba
 });
 
 // ---------------------------------------------------------------------------
+// Ticket 002 — analyzeTranscript rejection (both Bedrock models failed)
+// ---------------------------------------------------------------------------
+
+describe("Ticket 002: analyzeTranscript rejects (both models failed)", () => {
+  it("marks the session failed, rethrows, and does not enqueue a webhook", async () => {
+    mockAnalyzeTranscript.mockRejectedValue(
+      new Error("Both Nova Lite and Haiku failed: Bedrock unavailable")
+    );
+
+    await expect(runAnalyzeJob(BASE_PAYLOAD)).rejects.toThrow(
+      "Both Nova Lite and Haiku failed"
+    );
+
+    // Session must be marked failed, not completed
+    const sessionSetCall = mockUpdateChain.set.mock.calls.find(
+      (args: [Record<string, unknown>]) => "status" in args[0]
+    );
+    expect(sessionSetCall?.[0]).toMatchObject({
+      status: "failed",
+      failure_reason: "analysis_error",
+    });
+
+    // No completed status should ever have been set
+    const completedCall = mockUpdateChain.set.mock.calls.find(
+      (args: [Record<string, unknown>]) => args[0]?.status === "completed"
+    );
+    expect(completedCall).toBeUndefined();
+
+    // No webhook should be enqueued
+    expect(mockEnqueueWebhook).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 5.3 — Unit tests
 // ---------------------------------------------------------------------------
 

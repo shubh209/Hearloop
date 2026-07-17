@@ -160,7 +160,7 @@ export async function analyzeTranscript(
     return { ...result, modelUsed: "haiku-fallback", inputTokens, outputTokens };
   } catch (err: any) {
     console.error("Haiku fallback also failed:", err.message);
-    return { ...fallbackAnalysis("model_error"), modelUsed: "none" };
+    throw new Error(`Both Nova Lite and Haiku failed: ${err.message}`);
   }
 }
 
