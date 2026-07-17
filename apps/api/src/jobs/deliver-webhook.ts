@@ -37,18 +37,36 @@ export async function runDeliverWebhookJob(
   // SSRF guard — throws and marks job failed if URL is private/non-HTTPS
   assertPublicHttpsUrl(partner.webhook_url);
 
-  // 2. Build event payload
-  const eventId = randomUUID();
+  // 2. Look up this delivery's stable identity. If a prior attempt already
+  // created the row (retry), reuse its id/event_id so both stay stable
+  // across every attempt of the same (partner, session, event) delivery —
+  // otherwise mint fresh ones for the first attempt.
+  // ponytail: select-then-insert has a race if two attempts for the same
+  // event ran concurrently; BullMQ retries the same job sequentially, so
+  // that doesn't happen in practice. Revisit with an atomic upsert
+  // .returning() if this job ever runs concurrently per event.
+  const existingDelivery = await db
+    .selectFrom("webhook_deliveries")
+    .select(["id", "event_id"])
+    .where("partner_id", "=", partnerId)
+    .where("session_id", "=", sessionId)
+    .where("event_type", "=", eventType)
+    .executeTakeFirst();
+
+  const eventId = existingDelivery?.event_id ?? randomUUID();
+  const deliveryId = existingDelivery?.id ?? randomUUID();
+
+  // 3. Build event payload
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const eventPayload = await buildEventPayload(sessionId, eventType, eventId);
 
-  // 3. Sign payload with HMAC
+  // 4. Sign payload with HMAC
   const secret = process.env.WEBHOOK_SIGNING_SECRET!;
   const rawBody = JSON.stringify(eventPayload);
   const signature = signPayload(rawBody, timestamp, secret);
 
-  // 4. Upsert delivery record
-  const deliveryId = randomUUID();
+  // 5. Upsert delivery record (on retry, this only resets status — id and
+  // event_id above already match the existing row, so nothing shifts).
   await db
     .insertInto("webhook_deliveries")
     .values({
@@ -56,6 +74,7 @@ export async function runDeliverWebhookJob(
       partner_id: partnerId,
       session_id: sessionId,
       event_type: eventType,
+      event_id: eventId,
       payload_json: rawBody,
       status: "pending",
       attempt_count: 0,
@@ -70,7 +89,7 @@ export async function runDeliverWebhookJob(
     )
     .execute();
 
-  // 5. Attempt delivery
+  // 6. Attempt delivery
   let responseCode: number | null = null;
   let success = false;
 
@@ -102,7 +121,7 @@ export async function runDeliverWebhookJob(
     success = false;
   }
 
-  // 6. Update delivery record
+  // 7. Update delivery record
   const currentDelivery = await db
     .selectFrom("webhook_deliveries")
     .select("attempt_count")
@@ -132,7 +151,7 @@ export async function runDeliverWebhookJob(
     log.warn({ sessionId, partnerId, deliveryId, responseCode, attemptCount }, "webhook delivery failed, will retry");
   }
 
-  // 7. Throw on failure so BullMQ retries with backoff
+  // 8. Throw on failure so BullMQ retries with backoff
   if (!success && !isDead) {
     throw new Error(
       `Webhook delivery failed: status=${responseCode ?? "timeout"}`

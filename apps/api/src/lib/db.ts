@@ -96,6 +96,7 @@ export interface WebhookDeliveriesTable {
   partner_id: string;
   session_id: string;
   event_type: string;
+  event_id: Generated<string>;
   payload_json: string;
   status: Generated<"pending" | "delivered" | "failed" | "dead">;
   attempt_count: Generated<number>;
