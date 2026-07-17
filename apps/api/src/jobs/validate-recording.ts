@@ -4,6 +4,7 @@ import { db } from "../lib/db";
 import { getAudioBuffer } from "../lib/storage";
 import { enqueueTranscribe } from "../lib/queue";
 import { jobLogger } from "../lib/logger";
+import { markFailed } from "./helpers/mark-failed";
 
 const log = jobLogger("validate-recording");
 
@@ -44,7 +45,7 @@ export async function runValidateRecordingJob(
   // 1. Mime type check
   if (!SUPPORTED_MIME_TYPES.includes(mimeType)) {
     log.warn({ sessionId, mimeType }, "unsupported mime type");
-    await markFailed(sessionId, "unsupported_mime_type");
+    await markFailed(sessionId, "unsupported_mime_type", log);
     throw new Error("unsupported_mime_type");
   }
 
@@ -54,33 +55,33 @@ export async function runValidateRecordingJob(
     audioBuffer = await getAudioBuffer(storageKey);
   } catch (err: any) {
     log.error({ sessionId, storageKey, err: err.message }, "storage fetch error");
-    await markFailed(sessionId, "storage_fetch_error");
+    await markFailed(sessionId, "storage_fetch_error", log);
     throw err;
   }
 
   // 2. Size checks
   if (audioBuffer.byteLength === 0) {
     log.warn({ sessionId }, "empty file");
-    await markFailed(sessionId, "empty_file");
+    await markFailed(sessionId, "empty_file", log);
     throw new Error("empty_file");
   }
 
   if (audioBuffer.byteLength < MIN_FILE_SIZE_BYTES) {
     log.warn({ sessionId, sizeBytes: audioBuffer.byteLength }, "file too small");
-    await markFailed(sessionId, "file_too_small");
+    await markFailed(sessionId, "file_too_small", log);
     throw new Error("file_too_small");
   }
 
   if (audioBuffer.byteLength > MAX_FILE_SIZE_BYTES) {
     log.warn({ sessionId, sizeBytes: audioBuffer.byteLength }, "file too large");
-    await markFailed(sessionId, "file_too_large");
+    await markFailed(sessionId, "file_too_large", log);
     throw new Error("file_too_large");
   }
 
   // 3. Basic decode check — verify file has valid audio header bytes
   if (!hasValidAudioHeader(audioBuffer, mimeType)) {
     log.warn({ sessionId, mimeType }, "invalid audio header");
-    await markFailed(sessionId, "invalid_audio_header");
+    await markFailed(sessionId, "invalid_audio_header", log);
     throw new Error("invalid_audio_header");
   }
 
@@ -154,13 +155,4 @@ function hasValidAudioHeader(buffer: Buffer, mimeType: string): boolean {
     default:
       return false;
   }
-}
-
-async function markFailed(sessionId: string, reason: string): Promise<void> {
-  log.error({ sessionId, reason }, "session failed");
-  await db
-    .updateTable("sessions")
-    .set({ status: "failed", failure_reason: reason, updated_at: new Date() })
-    .where("id", "=", sessionId)
-    .execute();
 }

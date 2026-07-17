@@ -4,6 +4,7 @@ import { analyzeTranscript, AnalysisResult } from "../lib/claude";
 import { emitBedrockInvocation } from "../lib/cloudwatch";
 import { db } from "../lib/db";
 import { jobLogger } from "../lib/logger";
+import { markFailed } from "./helpers/mark-failed";
 
 const log = jobLogger("analyze");
 
@@ -82,7 +83,7 @@ export async function runAnalyzeJob(
     }
   } catch (err: any) {
     log.error({ sessionId, err: err.message }, "analysis error");
-    await markFailed(sessionId, "analysis_error");
+    await markFailed(sessionId, "analysis_error", log, false);
     throw err;
   }
 
@@ -120,18 +121,9 @@ export async function runAnalyzeJob(
     await enqueueWebhookDelivery(sessionId);
   } catch (err: any) {
     log.error({ sessionId, err: err.message }, "post-analysis error");
-    await markFailed(sessionId, "post_analysis_error");
+    await markFailed(sessionId, "post_analysis_error", log, false);
     throw err;
   }
-}
-
-async function markFailed(sessionId: string, reason: string): Promise<void> {
-  log.error({ sessionId, reason }, "session failed");
-  await db
-    .updateTable("sessions")
-    .set({ status: "failed", failure_reason: reason })
-    .where("id", "=", sessionId)
-    .execute();
 }
 
 async function enqueueWebhookDelivery(sessionId: string): Promise<void> {

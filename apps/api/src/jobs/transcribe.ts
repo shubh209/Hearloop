@@ -5,6 +5,7 @@ import { db } from "../lib/db";
 import { enqueueAnalyze } from "../lib/queue";
 import { randomUUID } from "crypto";
 import { jobLogger } from "../lib/logger";
+import { markFailed } from "./helpers/mark-failed";
 
 const log = jobLogger("transcribe");
 
@@ -40,7 +41,7 @@ export async function runTranscribeJob(
     log.info({ sessionId, lang: transcript.detectedLanguage, chars: transcript.text.length }, "transcription complete");
   } catch (err: any) {
     log.error({ sessionId, err: err.message }, "transcription error");
-    await markFailed(sessionId, "transcription_error");
+    await markFailed(sessionId, "transcription_error", log);
     throw err;
   }
 
@@ -78,18 +79,9 @@ export async function runTranscribeJob(
     });
   } catch (err: any) {
     log.error({ sessionId, err: err.message }, "post-transcription error");
-    await markFailed(sessionId, "post_transcription_error");
+    await markFailed(sessionId, "post_transcription_error", log);
     throw err;
   }
-}
-
-async function markFailed(sessionId: string, reason: string): Promise<void> {
-  log.error({ sessionId, reason }, "session failed");
-  await db
-    .updateTable("sessions")
-    .set({ status: "failed", failure_reason: reason, updated_at: new Date() })
-    .where("id", "=", sessionId)
-    .execute();
 }
 
 async function fetchAudioFromStorage(storageKey: string): Promise<Buffer> {
