@@ -45,7 +45,7 @@ export async function runValidateRecordingJob(
   if (!SUPPORTED_MIME_TYPES.includes(mimeType)) {
     log.warn({ sessionId, mimeType }, "unsupported mime type");
     await markFailed(sessionId, "unsupported_mime_type");
-    return;
+    throw new Error("unsupported_mime_type");
   }
 
   let audioBuffer: Buffer;
@@ -55,33 +55,33 @@ export async function runValidateRecordingJob(
   } catch (err: any) {
     log.error({ sessionId, storageKey, err: err.message }, "storage fetch error");
     await markFailed(sessionId, "storage_fetch_error");
-    return;
+    throw err;
   }
 
   // 2. Size checks
   if (audioBuffer.byteLength === 0) {
     log.warn({ sessionId }, "empty file");
     await markFailed(sessionId, "empty_file");
-    return;
+    throw new Error("empty_file");
   }
 
   if (audioBuffer.byteLength < MIN_FILE_SIZE_BYTES) {
     log.warn({ sessionId, sizeBytes: audioBuffer.byteLength }, "file too small");
     await markFailed(sessionId, "file_too_small");
-    return;
+    throw new Error("file_too_small");
   }
 
   if (audioBuffer.byteLength > MAX_FILE_SIZE_BYTES) {
     log.warn({ sessionId, sizeBytes: audioBuffer.byteLength }, "file too large");
     await markFailed(sessionId, "file_too_large");
-    return;
+    throw new Error("file_too_large");
   }
 
   // 3. Basic decode check — verify file has valid audio header bytes
   if (!hasValidAudioHeader(audioBuffer, mimeType)) {
     log.warn({ sessionId, mimeType }, "invalid audio header");
     await markFailed(sessionId, "invalid_audio_header");
-    return;
+    throw new Error("invalid_audio_header");
   }
 
   // 4. Update recording size in DB
