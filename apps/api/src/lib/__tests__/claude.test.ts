@@ -1,35 +1,9 @@
-// hearloop/apps/api/src/lib/__tests__/claude.test.ts
-//
-// Ticket 002 — analyzeTranscript must throw (not silently return a fake
-// "success" result) when both Nova Lite and Haiku fail.
+const mockInvokeBedrock = jest.fn();
 
-// ---------------------------------------------------------------------------
-// Mocks — declared before any imports that touch the module under test
-// ---------------------------------------------------------------------------
+jest.mock("../bedrock", () => ({
+  invokeBedrock: mockInvokeBedrock,
+}));
 
-// We mock @aws-sdk/client-bedrock-runtime so BedrockRuntimeClient.prototype.send
-// is controllable and no real AWS calls are made.
-const mockSend = jest.fn();
-
-jest.mock("@aws-sdk/client-bedrock-runtime", () => {
-  const actual = jest.requireActual("@aws-sdk/client-bedrock-runtime");
-  return {
-    ...actual,
-    BedrockRuntimeClient: jest.fn().mockImplementation(() => ({
-      send: mockSend,
-    })),
-  };
-});
-
-// ---------------------------------------------------------------------------
-// Imports (after mocks)
-// ---------------------------------------------------------------------------
-//
-// claude.ts constructs BedrockRuntimeClient eagerly at module-load time, and
-// that load happens before the `mockSend` declaration above runs (babel
-// hoists `jest.mock`/`import` above other top-level statements). Requiring
-// the module lazily, after `mockSend` is initialized, avoids the resulting
-// "Cannot access 'mockSend' before initialization" error.
 let analyzeTranscript: (typeof import("../claude"))["analyzeTranscript"];
 
 beforeAll(() => {
@@ -37,15 +11,58 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockSend.mockReset();
+  mockInvokeBedrock.mockReset();
 });
 
-describe("analyzeTranscript — both models fail", () => {
-  it("throws instead of returning a fallback result when Nova Lite and Haiku both reject", async () => {
-    mockSend.mockRejectedValue(new Error("Bedrock unavailable"));
+describe("analyzeTranscript", () => {
+  it("returns parsed Insights and normalized metrics from the shared Bedrock seam", async () => {
+    mockInvokeBedrock.mockResolvedValue({
+      text: JSON.stringify({
+        sentiment: "negative",
+        sentimentScore: 0.9,
+        topics: ["wait_time"],
+        urgency: "follow_up",
+        summary: "The wait was too long.",
+        qualityFlags: [],
+        moderationFlags: [],
+      }),
+      inputTokens: 31,
+      outputTokens: 17,
+    });
 
     await expect(
       analyzeTranscript("the wait was way too long today")
-    ).rejects.toThrow();
+    ).resolves.toEqual({
+      sentiment: "negative",
+      sentimentScore: 0.9,
+      topics: ["wait_time"],
+      urgency: "follow_up",
+      summary: "The wait was too long.",
+      qualityFlags: [],
+      moderationFlags: [],
+      modelUsed: "nova-lite",
+      inputTokens: 31,
+      outputTokens: 17,
+    });
+
+    expect(mockInvokeBedrock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelId: "us.amazon.nova-lite-v1:0",
+        maxTokens: 120,
+        temperature: 0,
+      })
+    );
+  });
+
+  it("throws instead of returning a fallback result when Nova Lite and Haiku both reject", async () => {
+    mockInvokeBedrock.mockRejectedValue(new Error("Bedrock unavailable"));
+
+    await expect(
+      analyzeTranscript("the wait was way too long today")
+    ).rejects.toThrow(
+      "Both Nova Lite and Haiku failed: Bedrock unavailable"
+    );
+
+    expect(mockInvokeBedrock).toHaveBeenCalledTimes(2);
   });
 });

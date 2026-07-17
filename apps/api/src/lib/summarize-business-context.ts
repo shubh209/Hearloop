@@ -2,18 +2,7 @@
 //
 // Bedrock summarization for imported website markdown → business_context draft.
 
-import {
-  BedrockRuntimeClient,
-  InvokeModelCommand,
-} from "@aws-sdk/client-bedrock-runtime";
-
-const client = new BedrockRuntimeClient({
-  region: process.env.BEDROCK_REGION ?? "us-east-2",
-  credentials: {
-    accessKeyId: process.env.BEDROCK_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.BEDROCK_SECRET_ACCESS_KEY!,
-  },
-});
+import { invokeBedrock } from "./bedrock";
 
 const NOVA_LITE = "us.amazon.nova-lite-v1:0";
 const MAX_OUTPUT_CHARS = 500;
@@ -50,26 +39,15 @@ export async function summarizeBusinessContext(
     .filter(Boolean)
     .join("\n\n");
 
-  const requestBody = {
-    messages: [{ role: "user", content: [{ text: userMessage }] }],
-    system: [{ text: SYSTEM_PROMPT }],
-    inferenceConfig: {
+  try {
+    const { text: outputText, inputTokens, outputTokens } = await invokeBedrock({
+      modelId: NOVA_LITE,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: [{ text: userMessage }] }],
       maxTokens: 180,
       temperature: 0.2,
-    },
-  };
-
-  try {
-    const command = new InvokeModelCommand({
-      modelId: NOVA_LITE,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify(requestBody),
     });
-
-    const response = await client.send(command);
-    const body = JSON.parse(new TextDecoder().decode(response.body));
-    const text = (body.output?.message?.content?.[0]?.text ?? "")
+    const text = (outputText ?? "")
       .trim()
       .slice(0, MAX_OUTPUT_CHARS);
 
@@ -80,8 +58,8 @@ export async function summarizeBusinessContext(
     return {
       draftContext: text,
       modelUsed: "nova-lite",
-      inputTokens: body.usage?.inputTokens,
-      outputTokens: body.usage?.outputTokens,
+      inputTokens,
+      outputTokens,
     };
   } catch (err: any) {
     if (err instanceof SummarizeError) throw err;

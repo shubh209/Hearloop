@@ -1,15 +1,4 @@
-import {
-  BedrockRuntimeClient,
-  InvokeModelCommand,
-} from "@aws-sdk/client-bedrock-runtime";
-
-const client = new BedrockRuntimeClient({
-  region: process.env.BEDROCK_REGION ?? "us-east-2",
-  credentials: {
-    accessKeyId: process.env.BEDROCK_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.BEDROCK_SECRET_ACCESS_KEY!,
-  },
-});
+import { invokeBedrock } from "./bedrock";
 
 const NOVA_LITE = "us.amazon.nova-lite-v1:0";
 const HAIKU_FALLBACK = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -62,67 +51,6 @@ Schema:
 
 Rules: topics only from allowed list. urgency=urgent means safety/strong anger. urgency=follow_up means complaint. Empty transcript = qualityFlags:["inaudible"].`;
 
-interface ModelResponse {
-  text: string;
-  inputTokens?: number;
-  outputTokens?: number;
-}
-
-async function invokeNovaLite(userMessage: string): Promise<ModelResponse> {
-  const requestBody = {
-    messages: [{ role: "user", content: [{ text: userMessage }] }],
-    system: [{ text: SYSTEM_PROMPT }],
-    inferenceConfig: {
-      maxTokens: 120,
-      temperature: 0.0,
-    },
-  };
-
-  const command = new InvokeModelCommand({
-    modelId: NOVA_LITE,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify(requestBody),
-  });
-
-  const response = await client.send(command);
-  const body = JSON.parse(new TextDecoder().decode(response.body));
-
-  return {
-    text: body.output?.message?.content?.[0]?.text ?? "",
-    inputTokens: body.usage?.inputTokens,
-    outputTokens: body.usage?.outputTokens,
-  };
-}
-
-async function invokeHaiku(userMessage: string): Promise<ModelResponse> {
-  const requestBody = {
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: 120,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
-  };
-
-  const command = new InvokeModelCommand({
-    modelId: HAIKU_FALLBACK,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify(requestBody),
-  });
-
-  const response = await client.send(command);
-  const body = JSON.parse(new TextDecoder().decode(response.body));
-
-  return {
-    text: body.content
-      .filter((b: any) => b.type === "text")
-      .map((b: any) => b.text)
-      .join(""),
-    inputTokens: body.usage?.input_tokens,
-    outputTokens: body.usage?.output_tokens,
-  };
-}
-
 export async function analyzeTranscript(
   transcript: string,
   options: { languageHint?: string; businessContext?: string } = {}
@@ -142,8 +70,14 @@ export async function analyzeTranscript(
   const userMessage = `${contextPrefix}Classify this feedback transcript: "${safeTranscript}"`;
 
   try {
-    const { text, inputTokens, outputTokens } = await invokeNovaLite(userMessage);
-    const result = parseAnalysis(text);
+    const { text, inputTokens, outputTokens } = await invokeBedrock({
+      modelId: NOVA_LITE,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: [{ text: userMessage }] }],
+      maxTokens: 120,
+      temperature: 0,
+    });
+    const result = parseAnalysis(text ?? "");
 
     if (!result.qualityFlags.includes("parse_error")) {
       return { ...result, modelUsed: "nova-lite", inputTokens, outputTokens };
@@ -155,8 +89,14 @@ export async function analyzeTranscript(
   }
 
   try {
-    const { text, inputTokens, outputTokens } = await invokeHaiku(userMessage);
-    const result = parseAnalysis(text);
+    const { text, inputTokens, outputTokens } = await invokeBedrock({
+      modelId: HAIKU_FALLBACK,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: [{ text: userMessage }] }],
+      maxTokens: 120,
+      temperature: 0,
+    });
+    const result = parseAnalysis(text ?? "");
     return { ...result, modelUsed: "haiku-fallback", inputTokens, outputTokens };
   } catch (err: any) {
     console.error("Haiku fallback also failed:", err.message);
