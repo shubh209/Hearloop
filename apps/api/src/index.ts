@@ -23,6 +23,7 @@ import { runExpireSessionJob } from "./jobs/expire-session";
 import { runImportBusinessContextJob } from "./jobs/import-business-context";
 import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
+import { rateLimitKey } from "./lib/rate-limit-key";
 import { partnerRoutes } from "./routes/partners";
 import { partnerMeRoutes } from "./routes/partner-me";
 import { captureLinkRoutes } from "./routes/capture-links";
@@ -119,11 +120,7 @@ const start = async () => {
       timeWindow: process.env.RATE_LIMIT_WINDOW_MS
         ? Number(process.env.RATE_LIMIT_WINDOW_MS)
         : "1 minute",
-      keyGenerator: (req: any) => {
-        const auth = req.headers["authorization"] ?? "";
-        const token = auth.replace("Bearer ", "");
-        return token.slice(0, 16) || req.ip;
-      },
+      keyGenerator: rateLimitKey,
       errorResponseBuilder: () => ({
           statusCode: 429,
           error: "Too Many Requests",
