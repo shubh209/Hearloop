@@ -2,6 +2,7 @@
 
 import { Generated, Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
+import { buildSslConfig } from "./db-ssl";
 
 export interface SessionsTable {
   id: Generated<string>;
@@ -140,9 +141,7 @@ const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
-  ssl: process.env.NODE_ENV === 'production' ? {
-    rejectUnauthorized: false
-  } : false,
+  ssl: buildSslConfig(process.env.NODE_ENV),
 });
 
 export const db = new Kysely<Database>({

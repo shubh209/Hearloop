@@ -22,6 +22,11 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.STORAGE_BUCKET!;
 
+export function buildStorageKey(sessionId: string, mimeType: string): string {
+  const ext = mimeType.split("/")[1] ?? "webm";
+  return `recordings/${sessionId}/audio.${ext}`;
+}
+
 // Fetch audio buffer from R2/S3
 export async function getAudioBuffer(storageKey: string): Promise<Buffer> {
   const command = new GetObjectCommand({
@@ -51,8 +56,7 @@ export async function uploadAudio(
   audioBuffer: Buffer,
   mimeType: string
 ): Promise<{ storageKey: string; sha256Hash: string; sizeBytes: number }> {
-  const ext = mimeType.split("/")[1] ?? "webm";
-  const storageKey = `recordings/${sessionId}/audio.${ext}`;
+  const storageKey = buildStorageKey(sessionId, mimeType);
   const sha256Hash = createHash("sha256").update(audioBuffer).digest("hex");
 
   await s3.send(
@@ -80,8 +84,7 @@ export async function getUploadSignedUrl(
   sessionId: string,
   mimeType: string
 ): Promise<{ uploadUrl: string; storageKey: string }> {
-  const ext = mimeType.split("/")[1] ?? "webm";
-  const storageKey = `recordings/${sessionId}/audio.${ext}`;
+  const storageKey = buildStorageKey(sessionId, mimeType);
 
   const command = new PutObjectCommand({
     Bucket: BUCKET,

@@ -2,7 +2,7 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { db } from "../lib/db";
-import { getUploadSignedUrl, deleteAudio } from "../lib/storage";
+import { getUploadSignedUrl, deleteAudio, buildStorageKey } from "../lib/storage";
 import { enqueueValidate, enqueueExpireSession } from "../lib/queue";
 import { randomUUID } from "crypto";
 
@@ -260,6 +260,13 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
+      }
+
+      if (
+        typeof body.mimeType !== "string" ||
+        body.storageKey !== buildStorageKey(id, body.mimeType)
+      ) {
+        return reply.code(400).send({ error: "storage_key_mismatch" });
       }
 
       // Upsert recording row

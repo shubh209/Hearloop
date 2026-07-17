@@ -33,8 +33,8 @@ export async function partnerRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "name, email and password required" });
       }
 
-      if (body.password.length < 6) {
-        return reply.code(400).send({ error: "password must be at least 6 characters" });
+      if (body.password.length < 10) {
+        return reply.code(400).send({ error: "password must be at least 10 characters" });
       }
 
       const existing = await db

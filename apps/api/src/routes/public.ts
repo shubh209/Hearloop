@@ -4,7 +4,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { randomUUID } from "crypto";
 import crypto from "crypto";
 import { db } from "../lib/db";
-import { getUploadSignedUrl } from "../lib/storage";
+import { getUploadSignedUrl, buildStorageKey } from "../lib/storage";
 import { enqueueValidate } from "../lib/queue";
 import { logger } from "../lib/logger";
 import {
@@ -342,6 +342,13 @@ export async function publicRoutes(app: FastifyInstance) {
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
+      }
+
+      if (
+        typeof body.mimeType !== "string" ||
+        body.storageKey !== buildStorageKey(session.id, body.mimeType)
+      ) {
+        return reply.code(400).send({ error: "storage_key_mismatch" });
       }
 
       await db

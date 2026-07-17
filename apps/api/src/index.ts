@@ -24,6 +24,7 @@ import { runImportBusinessContextJob } from "./jobs/import-business-context";
 import { Job } from "bullmq";
 import rateLimit from "@fastify/rate-limit";
 import { rateLimitKey } from "./lib/rate-limit-key";
+import { isPublicRoute } from "./lib/is-public-route";
 import { partnerRoutes } from "./routes/partners";
 import { partnerMeRoutes } from "./routes/partner-me";
 import { captureLinkRoutes } from "./routes/capture-links";
@@ -40,10 +41,18 @@ app.decorate("authenticate", authenticateSecretKey);
 app.decorate("authenticatePartner", authenticatePartner);
 
 // --- CORS ---
+// Wildcard is only for the widget-facing /v1/public/* routes (called from
+// arbitrary partner websites; per-partner origin allowlisting happens deeper
+// in the call chain — lookup-api-key.ts / authenticate-partner.ts).
+// Authenticated/dashboard routes get no default CORS header: the web app
+// talks to this API via a same-origin server-side proxy, not the browser, so
+// omitting it here means unlisted browser origins are blocked as intended.
 app.addHook("onRequest", async (req, reply) => {
-  reply.header("Access-Control-Allow-Origin", "*");
   reply.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   reply.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  if (isPublicRoute(req.url)) {
+    reply.header("Access-Control-Allow-Origin", "*");
+  }
   if (req.method === "OPTIONS") return reply.code(204).send();
 });
 

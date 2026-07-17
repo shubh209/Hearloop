@@ -18,6 +18,7 @@ jest.mock('../../lib/db', () => ({
 
 jest.mock('../../lib/storage', () => ({
   getUploadSignedUrl: jest.fn(),
+  buildStorageKey: jest.requireActual('../../lib/storage').buildStorageKey,
 }));
 
 jest.mock('../../lib/queue', () => ({
@@ -126,5 +127,38 @@ describe('GET /public/session/:token — allowed_origins parsing', () => {
       'https://a.example.com',
       'https://b.example.com',
     ]);
+  });
+});
+
+describe('POST /public/session/:token/finalize — storageKey ownership check', () => {
+  beforeEach(() => {
+    mockExecuteTakeFirst.mockReset();
+  });
+
+  it('rejects a storageKey that does not match this session\'s expected key', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+    });
+
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/someone-elses-session/audio.webm',
+          mimeType: 'audio/webm',
+        },
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(400);
   });
 });
