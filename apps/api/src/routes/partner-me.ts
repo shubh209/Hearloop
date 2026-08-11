@@ -5,18 +5,9 @@ import { db } from "../lib/db";
 import { createApiKeyForPartner } from "../lib/create-api-key";
 import { buildDashboardPayload } from "./partner-dashboard";
 import {
-  assertPublicHttpsUrl,
-  SsrfBlockedError,
-} from "../lib/assert-public-https-url";
-
-const BUSINESS_CONTEXT_SOURCES = [
-  "manual",
-  "template",
-  "import",
-  "import_edited",
-] as const;
-
-type BusinessContextSource = (typeof BUSINESS_CONTEXT_SOURCES)[number];
+  PartnerSettingsValidationError,
+  validatePartnerSettingsInput,
+} from "../lib/partner-settings";
 
 export async function partnerMeRoutes(app: FastifyInstance) {
   const auth = [app.authenticatePartner];
@@ -71,77 +62,29 @@ export async function partnerMeRoutes(app: FastifyInstance) {
     { preHandler: auth },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const partner = (req as any).partner;
-      const body = req.body as {
-        webhookUrl?: string | null;
-        allowedOrigins?: string | null;
-        businessContext?: string | null;
-        websiteUrl?: string | null;
-        businessContextSource?: BusinessContextSource | null;
-      };
-
-      if (body.webhookUrl !== undefined && body.webhookUrl !== null) {
-        try {
-          const parsed = new URL(body.webhookUrl);
-          if (parsed.protocol !== "https:") {
-            return reply.code(400).send({ error: "webhook_url must use HTTPS" });
-          }
-        } catch {
-          return reply.code(400).send({ error: "webhook_url must be a valid URL" });
+      let parsed;
+      try {
+        parsed = validatePartnerSettingsInput(req.body ?? {});
+      } catch (err) {
+        if (err instanceof PartnerSettingsValidationError) {
+          return reply.code(400).send({ error: err.error, message: err.message });
         }
-      }
-
-      if (body.allowedOrigins !== undefined && body.allowedOrigins !== null) {
-        const origins = body.allowedOrigins
-          .split(",")
-          .map((o) => o.trim())
-          .filter(Boolean);
-        for (const origin of origins) {
-          try {
-            const parsed = new URL(origin);
-            if (!parsed.origin || parsed.origin === "null") throw new Error("invalid");
-          } catch {
-            return reply
-              .code(400)
-              .send({
-                error: `invalid origin: "${origin}" — must be a full origin like https://example.com`,
-              });
-          }
-        }
-        body.allowedOrigins = origins.join(",");
-      }
-
-      if (body.businessContextSource !== undefined && body.businessContextSource !== null) {
-        if (!BUSINESS_CONTEXT_SOURCES.includes(body.businessContextSource)) {
-          return reply.code(400).send({ error: "invalid_business_context_source" });
-        }
-      }
-
-      if (body.websiteUrl !== undefined && body.websiteUrl !== null && body.websiteUrl.trim()) {
-        try {
-          assertPublicHttpsUrl(body.websiteUrl.trim());
-        } catch (err) {
-          if (err instanceof SsrfBlockedError) {
-            return reply.code(400).send({ error: err.code, message: err.message });
-          }
-          return reply.code(400).send({ error: "invalid_website_url" });
-        }
+        throw err;
       }
 
       const updates: Record<string, unknown> = {};
-      if (body.webhookUrl !== undefined) updates["webhook_url"] = body.webhookUrl;
-      if (body.allowedOrigins !== undefined) {
-        updates["allowed_origins"] = body.allowedOrigins;
+      if (parsed.webhookUrl !== undefined) updates["webhook_url"] = parsed.webhookUrl;
+      if (parsed.allowedOrigins !== undefined) {
+        updates["allowed_origins"] = parsed.allowedOrigins;
       }
-      if (body.businessContext !== undefined) {
-        updates["business_context"] = body.businessContext
-          ? body.businessContext.trim().slice(0, 500)
-          : null;
+      if (parsed.businessContext !== undefined) {
+        updates["business_context"] = parsed.businessContext;
       }
-      if (body.websiteUrl !== undefined) {
-        updates["website_url"] = body.websiteUrl?.trim() || null;
+      if (parsed.websiteUrl !== undefined) {
+        updates["website_url"] = parsed.websiteUrl;
       }
-      if (body.businessContextSource !== undefined) {
-        updates["business_context_source"] = body.businessContextSource;
+      if (parsed.businessContextSource !== undefined) {
+        updates["business_context_source"] = parsed.businessContextSource;
       }
 
       if (Object.keys(updates).length === 0) {

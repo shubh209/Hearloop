@@ -5,6 +5,16 @@
 
 ---
 
+## Ticket 011 — Partner settings validation — Aug 11, 2026
+
+- Metric: private/loopback webhook URLs accepted on PATCH settings
+- Before: 1 write path (`/partners/:id/settings`) accepted `https://127.0.0.1` (HTTPS-only check)
+- After: 0 — both settings routes reject via `assertPublicHttpsUrl` (`ssrf_blocked`)
+- Delta: save-time SSRF gap closed on webhook + website URL
+- How measured: `cd apps/api && ../../node_modules/.bin/jest src/lib/__tests__/partner-settings.test.ts --runInBand`
+
+---
+
 ## Ticket 008 — Urgent alert email — Aug 11, 2026
 
 - Metric: push Insights channels for a non-technical Partner (no webhook server)

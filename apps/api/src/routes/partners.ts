@@ -7,6 +7,10 @@ import bcrypt from "bcrypt";
 import { createApiKeyForPartner } from "../lib/create-api-key";
 import { signPartnerSession } from "../lib/partner-session";
 import { buildDashboardPayload } from "./partner-dashboard";
+import {
+  PartnerSettingsValidationError,
+  validatePartnerSettingsInput,
+} from "../lib/partner-settings";
 
 const SALT_ROUNDS = 12;
 
@@ -141,50 +145,23 @@ export async function partnerRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: "forbidden" });
       }
 
-      const body = req.body as {
-        webhookUrl?: string | null;
-        allowedOrigins?: string | null;
-        businessContext?: string | null;
-      };
-
-      if (body.webhookUrl !== undefined && body.webhookUrl !== null) {
-        try {
-          const parsed = new URL(body.webhookUrl);
-          if (parsed.protocol !== "https:") {
-            return reply.code(400).send({ error: "webhook_url must use HTTPS" });
-          }
-        } catch {
-          return reply.code(400).send({ error: "webhook_url must be a valid URL" });
+      let parsed;
+      try {
+        parsed = validatePartnerSettingsInput(req.body ?? {});
+      } catch (err) {
+        if (err instanceof PartnerSettingsValidationError) {
+          return reply.code(400).send({ error: err.error, message: err.message });
         }
-      }
-
-      if (body.allowedOrigins !== undefined && body.allowedOrigins !== null) {
-        const origins = body.allowedOrigins
-          .split(",")
-          .map((o) => o.trim())
-          .filter(Boolean);
-        for (const origin of origins) {
-          try {
-            const parsed = new URL(origin);
-            if (!parsed.origin || parsed.origin === "null") throw new Error("invalid");
-          } catch {
-            return reply.code(400).send({
-              error: `invalid origin: "${origin}" — must be a full origin like https://example.com`,
-            });
-          }
-        }
-        body.allowedOrigins = origins.join(",");
+        throw err;
       }
 
       const updates: Record<string, unknown> = {};
-      if (body.webhookUrl !== undefined) updates["webhook_url"] = body.webhookUrl;
-      if (body.allowedOrigins !== undefined) {
-        updates["allowed_origins"] = body.allowedOrigins;
+      if (parsed.webhookUrl !== undefined) updates["webhook_url"] = parsed.webhookUrl;
+      if (parsed.allowedOrigins !== undefined) {
+        updates["allowed_origins"] = parsed.allowedOrigins;
       }
-      if (body.businessContext !== undefined) {
-        updates["business_context"] = body.businessContext
-          ? body.businessContext.trim().slice(0, 500)
-          : null;
+      if (parsed.businessContext !== undefined) {
+        updates["business_context"] = parsed.businessContext;
       }
 
       if (Object.keys(updates).length === 0) {
