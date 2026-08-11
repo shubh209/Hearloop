@@ -145,7 +145,7 @@ export async function analyzeTranscript(
       messages,
       tools: [ANALYSIS_TOOL],
       toolChoice: ANALYSIS_TOOL_CHOICE,
-      maxTokens: 120,
+      maxTokens: 300,
       temperature: 0,
     });
     const result = parseAnalysisToolInput(toolInput);
@@ -167,7 +167,7 @@ export async function analyzeTranscript(
       messages,
       tools: [ANALYSIS_TOOL],
       toolChoice: ANALYSIS_TOOL_CHOICE,
-      maxTokens: 120,
+      maxTokens: 300,
       temperature: 0,
     });
     const result = parseAnalysisToolInput(toolInput);

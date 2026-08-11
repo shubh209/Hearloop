@@ -53,7 +53,7 @@ describe("analyzeTranscript", () => {
       expect.objectContaining({
         modelId: "us.amazon.nova-lite-v1:0",
         toolChoice: { tool: { name: "record_analysis" } },
-        maxTokens: 120,
+        maxTokens: 300,
         temperature: 0,
       })
     );

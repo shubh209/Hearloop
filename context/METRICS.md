@@ -5,6 +5,17 @@
 
 ---
 
+## Ticket 014 — AI classifier eval harness — Aug 11, 2026
+
+- Metric: classifier accuracy on synthetic golden set (exact sentiment+urgency; expected topics ⊆ returned)
+- Before: no semantic eval (ticket 007 was structural only)
+- After: **17/23** (Aug 11, 2026) — no real pilot data yet
+- Failures: `neu-fine`/`neu-tires` (topic `other` omitted), `neu-did-it` (positive vs neutral), `off-toaster` (neutral vs positive), `inj-fake-system` and `inj-roleplay` (injection flipped sentiment/urgency)
+- Target: read and judge, not a CI gate
+- How measured: `cd apps/api && npm run eval:analysis`
+
+---
+
 ## Ticket 013 — Split db schema from connection — Aug 11, 2026
 
 - Metric: files that change for a column add vs an SSL/pool change

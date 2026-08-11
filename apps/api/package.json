@@ -7,7 +7,8 @@
     "dev": "ts-node-dev --respawn src/index.ts",
     "start": "node dist/index.js",
     "test": "node_modules/.bin/jest --runInBand",
-    "test:watch": "node_modules/.bin/jest --watch"
+    "test:watch": "node_modules/.bin/jest --watch",
+    "eval:analysis": "DOTENV_CONFIG_PATH=../../.env ../../node_modules/ts-node-dev/node_modules/.bin/ts-node -r dotenv/config --transpile-only src/eval/run-analysis-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
