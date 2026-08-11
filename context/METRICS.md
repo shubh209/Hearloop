@@ -5,6 +5,16 @@
 
 ---
 
+## Ticket 013 — Split db schema from connection — Aug 11, 2026
+
+- Metric: files that change for a column add vs an SSL/pool change
+- Before: 1 file (`lib/db.ts`) for both reasons
+- After: column add → `lib/db-schema.ts` only; SSL/pool → `lib/db.ts` only
+- Delta: 1 mixed module → 2 single-reason modules
+- How measured: `npx tsc --noEmit` after the split; existing `import { db } from "../lib/db"` unchanged
+
+---
+
 ## Ticket 012 — Queue/Redis seam — Aug 11, 2026
 
 - Metric: places that open BullMQ/IORedis for queue access outside workers
