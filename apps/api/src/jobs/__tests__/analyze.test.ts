@@ -91,6 +91,11 @@ jest.mock("../../lib/queue", () => ({
   enqueueWebhook: (...args: unknown[]) => mockEnqueueWebhook(...args),
 }));
 
+const mockSendUrgentAlert = jest.fn();
+jest.mock("../../lib/send-urgent-alert", () => ({
+  sendUrgentAlert: (...args: unknown[]) => mockSendUrgentAlert(...args),
+}));
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -163,6 +168,8 @@ beforeEach(() => {
 
   // enqueueWebhook: default to success
   mockEnqueueWebhook.mockResolvedValue(undefined);
+
+  mockSendUrgentAlert.mockResolvedValue(undefined);
 });
 
 describe("Ticket 007: Target-aware analysis context", () => {
@@ -190,6 +197,7 @@ describe("Ticket 007: Target-aware analysis context", () => {
       "sessions.metadata_json",
       "partners.business_context",
       "partners.name",
+      "partners.email",
     ]);
     expect(mockAnalyzeTranscript).toHaveBeenCalledWith(BASE_PAYLOAD.transcript, {
       languageHint: "en",
@@ -508,5 +516,96 @@ describe("Unit tests: emit wiring in runAnalyzeJob", () => {
         callOrder.indexOf("emit")
       );
     });
+  });
+});
+
+describe("Ticket 008: Urgent alert email", () => {
+  function partnerRow(overrides: Record<string, unknown> = {}) {
+    return {
+      business_context: null,
+      name: "Acme Motors",
+      email: "owner@acme.test",
+      metadata_json: JSON.stringify({
+        target: { label: "North Ave — Oil Change", key: "north-ave", source: "capture-link" },
+      }),
+      ...overrides,
+    };
+  }
+
+  it("sends exactly one alert for negative + urgent Insights", async () => {
+    mockAnalyzeTranscript.mockResolvedValue({
+      ...makeAnalysis("nova-lite"),
+      sentiment: "negative",
+      urgency: "urgent",
+      summary: "Customer is furious about the wait.",
+    });
+    mockExecuteTakeFirst
+      .mockResolvedValueOnce(partnerRow())
+      .mockResolvedValueOnce({ partner_id: "partner-1" });
+
+    await runAnalyzeJob(BASE_PAYLOAD);
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockSendUrgentAlert).toHaveBeenCalledTimes(1);
+    expect(mockSendUrgentAlert).toHaveBeenCalledWith({
+      to: "owner@acme.test",
+      sessionId: BASE_PAYLOAD.sessionId,
+      summary: "Customer is furious about the wait.",
+      sentiment: "negative",
+      urgency: "urgent",
+      targetLabel: "North Ave — Oil Change",
+    });
+    expect(mockEnqueueWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["positive + urgent", { sentiment: "positive", urgency: "urgent" }],
+    ["negative + follow_up", { sentiment: "negative", urgency: "follow_up" }],
+    ["neutral + none", { sentiment: "neutral", urgency: "none" }],
+  ])("does not send for %s", async (_case, fields) => {
+    mockAnalyzeTranscript.mockResolvedValue({
+      ...makeAnalysis("nova-lite"),
+      ...fields,
+    });
+    mockExecuteTakeFirst
+      .mockResolvedValueOnce(partnerRow())
+      .mockResolvedValueOnce({ partner_id: "partner-1" });
+
+    await runAnalyzeJob(BASE_PAYLOAD);
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockSendUrgentAlert).not.toHaveBeenCalled();
+    expect(mockEnqueueWebhook).toHaveBeenCalledTimes(1);
+  });
+
+  it("completes the Session and still enqueues the webhook when SES rejects", async () => {
+    mockAnalyzeTranscript.mockResolvedValue({
+      ...makeAnalysis("nova-lite"),
+      sentiment: "negative",
+      urgency: "urgent",
+      summary: "Unsafe work.",
+    });
+    mockSendUrgentAlert.mockRejectedValue(new Error("SES sandbox"));
+    mockExecuteTakeFirst
+      .mockResolvedValueOnce(partnerRow())
+      .mockResolvedValueOnce({ partner_id: "partner-1" });
+
+    await expect(runAnalyzeJob(BASE_PAYLOAD)).resolves.toBeUndefined();
+    await new Promise((r) => setImmediate(r));
+
+    const sessionSetCall = mockUpdateChain.set.mock.calls.find(
+      (args: [Record<string, unknown>]) => args[0]?.status === "completed"
+    );
+    expect(sessionSetCall).toBeDefined();
+    expect(mockEnqueueWebhook).toHaveBeenCalledTimes(1);
+
+    const warnCalls: [Record<string, unknown>, string][] = mockWarn.mock.calls;
+    expect(
+      warnCalls.some(
+        ([ctx, msg]) =>
+          ctx?.err === "SES sandbox" &&
+          msg === "urgent alert email failed — session unaffected"
+      )
+    ).toBe(true);
   });
 });

@@ -4,6 +4,7 @@ import { analyzeTranscript, AnalysisResult } from "../lib/claude";
 import { emitBedrockInvocation } from "../lib/cloudwatch";
 import { db } from "../lib/db";
 import { jobLogger } from "../lib/logger";
+import { sendUrgentAlert } from "../lib/send-urgent-alert";
 import { markFailed } from "./helpers/mark-failed";
 
 const log = jobLogger("analyze");
@@ -23,6 +24,7 @@ export async function runAnalyzeJob(
   // We look it up here (not in the queue payload) so it's always current.
   let businessContext: string | null = null;
   let target: string | undefined;
+  let partnerEmail: string | undefined;
   try {
     const row = await db
       .selectFrom("sessions")
@@ -31,12 +33,14 @@ export async function runAnalyzeJob(
         "sessions.metadata_json",
         "partners.business_context",
         "partners.name",
+        "partners.email",
       ])
       .where("sessions.id", "=", sessionId)
       .executeTakeFirst();
     businessContext = row?.business_context ?? null;
     // ponytail: pass Target label only; include key if analysis ever needs grouping
     target = extractTargetLabel(row?.metadata_json);
+    partnerEmail = row?.email?.trim() || undefined;
     log.info(
       {
         sessionId,
@@ -135,6 +139,23 @@ export async function runAnalyzeJob(
 
     // 4. Enqueue webhook delivery
     await enqueueWebhookDelivery(sessionId);
+
+    // 5. Fire-and-forget Urgent alert email — never blocks webhook or fails the Session
+    if (analysis.sentiment === "negative" && analysis.urgency === "urgent") {
+      sendUrgentAlert({
+        to: partnerEmail ?? "",
+        sessionId,
+        summary: analysis.summary,
+        sentiment: analysis.sentiment,
+        urgency: analysis.urgency,
+        targetLabel: target,
+      }).catch((err: Error) => {
+        log.warn(
+          { sessionId, err: err.message },
+          "urgent alert email failed — session unaffected"
+        );
+      });
+    }
   } catch (err: any) {
     log.error({ sessionId, err: err.message }, "post-analysis error");
     await markFailed(sessionId, "post_analysis_error", log, false);

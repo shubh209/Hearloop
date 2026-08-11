@@ -22,7 +22,7 @@ _Avoid_: Prompt text (that's per-Session capture copy), webhook URL
 
 
 **Business context import**:
-Partner-initiated one-time website fetch that drafts `business_context` for review in onboarding/settings. Import pre-fills text only; Partner must click Save to persist it.
+Partner-initiated one-time website fetch that drafts `business_context` for review in onboarding/settings. Import pre-fills text only; Partner must click Save to persist it. **Mothballed Jul 16, 2026** — built before validating that manual entry (the always-available fallback) is actually a friction point for the locked persona (non-technical local business, often no real website — Google Business Profile/Facebook page instead). No further investment until a real pilot shows manual entry is insufficient. Still functional for the minority with a website; not being extended.
 _Avoid_: Automatic scraping on every Session, page context
 
 **Import source URL**:
@@ -50,8 +50,12 @@ Structured output from analysis: transcript, sentiment, topics, urgency, flags �
 _Avoid_: Result (too vague)
 
 **Insights delivery**:
-How a Partner receives completed Session output. **Dashboard** (Hearloop UI listing Sessions for that Partner) and **Webhook delivery** (HTTPS POST to Partner-configured URL) are separate channels; both may show the same Insights.
+How a Partner receives completed Session output. Three separate channels, all fed by the same Insights: **Dashboard** (Hearloop UI listing Sessions for that Partner, pull), **Webhook delivery** (HTTPS POST to Partner-configured URL, requires the Partner to run a receiving server), and **Urgent alert email** (SES email, push, fires only on negative-sentiment + urgent Sessions — the channel a non-technical Partner with no webhook receiver actually gets notified through).
 _Avoid_: Result (too vague)
+
+**Urgent alert email**:
+Push notification (email via AWS SES) sent to the Partner the moment a Session's Insights come back negative-sentiment **and** urgent. Exists because Dashboard is pull (Partner has to think to check it) and Webhook delivery assumes a dev team the target Partner (non-technical local business) doesn't have. Only fires on the negative+urgent subset, not every Session — avoids alert fatigue.
+_Avoid_: Webhook delivery (per-Session HTTPS push to Partner infra, different mechanism), Notification (too vague — this is specifically threshold-triggered)
 
 **Recording**:
 The audio artifact for a Session — stored in object storage; referenced from the database by key and metadata.

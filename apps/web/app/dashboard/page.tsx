@@ -63,8 +63,13 @@ export default function DashboardPage() {
     // API key is in the httpOnly cookie — the proxy injects it automatically.
     // No need to read it from localStorage or pass it in the Authorization header.
     if (typeof window !== "undefined") {
-      const navParam = new URLSearchParams(window.location.search).get("nav");
-      if (navParam === "embed") setNav("embed");
+      const params = new URLSearchParams(window.location.search);
+      const navParam = params.get("nav");
+      if (navParam === "embed" || navParam === "sessions" || navParam === "alerts") {
+        setNav(navParam);
+      }
+      const sessionParam = params.get("session");
+      if (sessionParam) setExpandedSession(sessionParam);
     }
 
     const fetchDashboard = () =>

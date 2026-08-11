@@ -5,6 +5,17 @@
 
 ---
 
+## Ticket 008 — Urgent alert email — Aug 11, 2026
+
+- Metric: push Insights channels for a non-technical Partner (no webhook server)
+- Before: 0 — Dashboard (pull) + Webhook only
+- After: 1 — SES email on `sentiment === "negative" && urgency === "urgent"`
+- Delta: +1 delivery channel; non-matching Sessions send 0 emails (3/3 gated cases)
+- How measured: `cd apps/api && ../../node_modules/.bin/jest src/jobs/__tests__/analyze.test.ts src/lib/__tests__/send-urgent-alert.test.ts --runInBand` (18/18)
+- Scope note: code path only. SES sandbox cannot deliver to unverified inboxes until a sender identity is verified in the AWS console.
+
+---
+
 ## Ticket 007 — Target-aware forced-tool AI analysis — Jul 17, 2026
 
 ### Free-text parse-error paths
