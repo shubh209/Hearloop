@@ -38,8 +38,7 @@ function makeWorkerConn(): IORedis {
   });
 }
 
-// Queue names
-const QUEUE_NAMES = {
+export const QUEUE_NAMES = {
   "validate-recording": "hearloop-validate",
   "transcribe":         "hearloop-transcribe",
   "analyze":            "hearloop-analyze",
@@ -52,6 +51,16 @@ const QUEUE_NAMES = {
 export type JobName = keyof typeof QUEUE_NAMES;
 
 export const IMPORT_QUEUE_NAME = QUEUE_NAMES["import-business-context"];
+
+export const HEALTH_QUEUE_JOBS = {
+  validate: "validate-recording",
+  transcribe: "transcribe",
+  analyze: "analyze",
+  webhooks: "deliver-webhook",
+} as const;
+
+export type HealthQueueKey = keyof typeof HEALTH_QUEUE_JOBS;
+export type WaitingJobCounts = Record<HealthQueueKey, number>;
 
 // Default job options applied to every queue.add() call
 const DEFAULT_JOB_OPTIONS = {
@@ -72,6 +81,60 @@ const WORKER_OPTIONS = {
  * The Queue is created, used, and closed immediately so no persistent
  * connection or background activity remains between enqueue calls.
  */
+export async function withQueue<T>(
+  jobName: JobName,
+  fn: (queue: Queue) => Promise<T>
+): Promise<T> {
+  const conn = new IORedis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
+  const queue = new Queue(QUEUE_NAMES[jobName], { connection: conn });
+  try {
+    return await fn(queue);
+  } finally {
+    await queue.close();
+    conn.disconnect();
+  }
+}
+
+export async function getWaitingJobCounts(): Promise<WaitingJobCounts> {
+  const conn = new IORedis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
+  const entries = (Object.entries(HEALTH_QUEUE_JOBS) as [HealthQueueKey, JobName][]).map(
+    ([key, jobName]) => ({
+      key,
+      queue: new Queue(QUEUE_NAMES[jobName], { connection: conn }),
+    })
+  );
+
+  try {
+    const settled = await Promise.allSettled(
+      entries.map(({ key, queue }) =>
+        queue.getJobCounts("waiting").then((c) => ({ key, waiting: c.waiting ?? 0 }))
+      )
+    );
+    const firstError = settled.find((r) => r.status === "rejected") as
+      | PromiseRejectedResult
+      | undefined;
+    if (firstError) {
+      const reason = firstError.reason;
+      throw reason instanceof Error ? reason : new Error(String(reason));
+    }
+    return (
+      settled as PromiseFulfilledResult<{ key: HealthQueueKey; waiting: number }>[]
+    ).reduce((acc, { value: { key, waiting } }) => {
+      acc[key] = waiting;
+      return acc;
+    }, {} as WaitingJobCounts);
+  } finally {
+    await Promise.allSettled(entries.map(({ queue }) => queue.close()));
+    conn.disconnect();
+  }
+}
+
 async function enqueue(
   jobName: JobName,
   jobData: Record<string, unknown>,
@@ -83,25 +146,14 @@ async function enqueue(
     jobOptions?: JobsOptions;
   } = {}
 ): Promise<void> {
-  // Each Queue instance needs its own IORedis connection (not shared with workers).
-  const conn = new IORedis(REDIS_URL, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-  });
-  const queue = new Queue(QUEUE_NAMES[jobName], { connection: conn });
-
-  try {
+  await withQueue(jobName, async (queue) => {
     const { jobOptions, ...enqueueOpts } = options;
     await queue.add(jobName, jobData, {
       ...DEFAULT_JOB_OPTIONS,
       ...enqueueOpts,
       ...jobOptions,
     });
-  } finally {
-    // Always close — even on error — so the connection doesn't linger
-    await queue.close();
-    conn.disconnect();
-  }
+  });
 }
 
 /**

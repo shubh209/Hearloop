@@ -14,9 +14,9 @@
 
 import { FastifyInstance } from 'fastify';
 import IORedis from 'ioredis';
-import { Queue } from 'bullmq';
 import { db } from '../lib/db';
 import { sql } from 'kysely';
+import { getWaitingJobCounts } from '../lib/queue';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -150,40 +150,10 @@ export async function checkRedis(): Promise<CheckResult> {
  * state (~8 commands per queue) — wasteful on Upstash's per-command free tier.
  */
 export async function checkQueues(): Promise<QueueDepths | { status: 'error'; error: string }> {
-  const conn = new IORedis(process.env.REDIS_URL!, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-  });
-
-  const QUEUE_MAP: Record<keyof QueueDepths, string> = {
-    validate:  'hearloop-validate',
-    transcribe: 'hearloop-transcribe',
-    analyze:   'hearloop-analyze',
-    webhooks:  'hearloop-webhooks',
-  };
-
-  const entries = (Object.entries(QUEUE_MAP) as [keyof QueueDepths, string][]).map(
-    ([key, name]) => ({ key, queue: new Queue(name, { connection: conn }) })
-  );
-
   try {
-    const settled = await Promise.allSettled(
-      entries.map(({ key, queue }) =>
-        queue.getJobCounts('waiting').then((c) => ({ key, waiting: c.waiting ?? 0 }))
-      )
-    );
-    const firstError = settled.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
-    if (firstError) {
-      const reason = firstError.reason;
-      return { status: 'error', error: reason instanceof Error ? reason.message : String(reason) };
-    }
-    return (settled as PromiseFulfilledResult<{ key: keyof QueueDepths; waiting: number }>[])
-      .reduce((acc, { value: { key, waiting } }) => ({ ...acc, [key]: waiting }), {} as QueueDepths);
+    return await getWaitingJobCounts();
   } catch (err) {
     return { status: 'error', error: err instanceof Error ? err.message : String(err) };
-  } finally {
-    await Promise.allSettled(entries.map(({ queue }) => queue.close()));
-    conn.disconnect();
   }
 }
 

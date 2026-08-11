@@ -5,6 +5,16 @@
 
 ---
 
+## Ticket 012 — Queue/Redis seam — Aug 11, 2026
+
+- Metric: places that open BullMQ/IORedis for queue access outside workers
+- Before: 3 — `queue.ts` enqueue, `health.ts` checkQueues, `import-job-status.ts`
+- After: 1 — `lib/queue.ts` (`withQueue` / `getWaitingJobCounts`)
+- Delta: 2 ad-hoc queue clients removed; `/health/detailed` shape unchanged
+- How measured: `rg -n "new IORedis|new Queue" apps/api/src` plus `jest src/lib/__tests__/queue.test.ts src/routes/__tests__/health.queues.test.ts`
+
+---
+
 ## Ticket 011 — Partner settings validation — Aug 11, 2026
 
 - Metric: private/loopback webhook URLs accepted on PATCH settings

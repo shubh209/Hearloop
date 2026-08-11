@@ -2,11 +2,8 @@
 //
 // Read BullMQ import job state for partner polling.
 
-import { Job, Queue } from "bullmq";
-import IORedis from "ioredis";
-import { IMPORT_QUEUE_NAME } from "./queue";
-
-const REDIS_URL = process.env.REDIS_URL!;
+import { Job } from "bullmq";
+import { withQueue } from "./queue";
 
 export interface ImportJobPayload {
   partnerId: string;
@@ -28,22 +25,8 @@ export interface ImportJobResult {
   errorCode?: string;
 }
 
-async function withQueue<T>(fn: (queue: Queue) => Promise<T>): Promise<T> {
-  const conn = new IORedis(REDIS_URL, {
-    maxRetriesPerRequest: null,
-    enableReadyCheck: false,
-  });
-  const queue = new Queue(IMPORT_QUEUE_NAME, { connection: conn });
-  try {
-    return await fn(queue);
-  } finally {
-    await queue.close();
-    conn.disconnect();
-  }
-}
-
 export async function partnerHasActiveImport(partnerId: string): Promise<boolean> {
-  return withQueue(async (queue) => {
+  return withQueue("import-business-context", async (queue) => {
     const jobs = await queue.getJobs(["active", "waiting", "delayed"]);
     return jobs.some((job) => job.data?.partnerId === partnerId);
   });
@@ -53,7 +36,7 @@ export async function getImportJobStatus(
   importId: string,
   partnerId: string
 ): Promise<ImportJobStatus | null> {
-  return withQueue(async (queue) => {
+  return withQueue("import-business-context", async (queue) => {
     const job = await Job.fromId(queue, importId);
     if (!job) return null;
 
