@@ -5,6 +5,65 @@
 
 ---
 
+## Ticket 007 — Target-aware forced-tool AI analysis — Jul 17, 2026
+
+### Free-text parse-error paths
+- Metric: free-text JSON parsing/recovery paths in `apps/api/src/lib/claude.ts`
+- Before: 1 — markdown-fence stripping + `JSON.parse` could return `fallbackAnalysis("parse_error")`
+- After: 0 — only validated Bedrock Converse `toolInput` is accepted
+- Delta: 1 → 0 (-100%)
+- Target: 0
+- How measured: `rg -n 'parse_error|JSON\.parse|raw\.replace' apps/api/src/lib/claude.ts` (no matches after); focused tests also provide valid free text alongside missing tool input and verify Haiku fallback
+
+### Target and structured-output contract coverage
+- Metric: dedicated local contract cases for Target propagation, forced tool use, fallback validation, and transcript/context separation
+- Before: 0
+- After: 12/12 Ticket 007 cases passing within 19/19 focused tests
+- Target: 100% passing with both Nova Lite and Haiku forced to `record_analysis`
+- How measured: `cd apps/api && npx jest src/lib/__tests__/claude.test.ts src/jobs/__tests__/analyze.test.ts --runInBand`
+- Scope note: mocked seam/contract checks only. Live accuracy + injection resistance is ticket 014 (`eval:analysis`), not this ticket.
+
+### Analyze-step latency
+- Metric: Bedrock analyze latency (`BedrockLatencyMs` / Session 7 ~1.2s baseline)
+- Before: ~1,200 ms (Session 7, free-text JSON, n=1)
+- After: TBD after ≥5 production Sessions on the forced-tool path — extra Target/system tokens may raise input tokens; output should stay schema-sized
+- Target: no material regression vs ~1.2s
+- How measured: CloudWatch `Hearloop/Pipeline` `BedrockLatencyMs`; SQL in the live-cost block below for end-to-end `processing_completed_at - processing_started_at`
+
+### Successful-call token metric retention
+- Metric: Bedrock token fields carried through successful primary and fallback analysis
+- Before: 2 fields (`inputTokens`, `outputTokens`)
+- After: 2 fields retained; focused tests preserve exact Nova values (31/17) and exact successful Haiku fallback values (41/23)
+- Delta: 100% field retention
+- Target: both successful-call fields remain populated exactly from the selected Bedrock response
+- How measured: focused Jest command above; production persistence remains `analyses.input_tokens` / `analyses.output_tokens`
+
+### Live Bedrock token cost
+- Metric: average Nova Lite input/output tokens and estimated cost per completed Session
+- Before: ~215 input tokens, ~72 output tokens, ~$0.0000302 per Session (n=1 historical live baseline)
+- After: TBD after at least 5 production Sessions use the forced-tool path; no live value was fabricated locally
+- Target: < $0.0001 per Session while retaining valid Target-scoped Insights
+- How measured:
+  ```sql
+  SELECT
+    COUNT(*) AS sessions,
+    ROUND(AVG(a.input_tokens)::numeric, 0) AS avg_input_tokens,
+    ROUND(AVG(a.output_tokens)::numeric, 0) AS avg_output_tokens,
+    TO_CHAR(
+      AVG((a.input_tokens * 0.00000006) + (a.output_tokens * 0.00000024)),
+      'FM0.0000000'
+    ) AS avg_cost_usd
+  FROM analyses a
+  JOIN sessions s ON s.id = a.session_id
+  WHERE s.status = 'completed'
+    AND s.processing_completed_at >= TIMESTAMPTZ '2026-07-17 00:00:00Z'
+    AND a.model_used = 'nova-lite'
+    AND a.input_tokens IS NOT NULL
+    AND a.output_tokens IS NOT NULL;
+  ```
+
+---
+
 ## Dashboard de-mock + Capture links (Direction A) — Jun 16, 2026
 
 ### Dashboard "real data" ratio

@@ -19,19 +19,32 @@ export async function runAnalyzeJob(
 ): Promise<void> {
   const { sessionId, transcript, languageHint } = payload;
 
-  // Fetch partner's business context for more relevant classification.
+  // Fetch current Partner and Target context for more relevant classification.
   // We look it up here (not in the queue payload) so it's always current.
   let businessContext: string | null = null;
+  let target: string | undefined;
   try {
     const row = await db
       .selectFrom("sessions")
       .innerJoin("partners", "partners.id", "sessions.partner_id")
-      .select(["partners.business_context", "partners.name"])
+      .select([
+        "sessions.metadata_json",
+        "partners.business_context",
+        "partners.name",
+      ])
       .where("sessions.id", "=", sessionId)
       .executeTakeFirst();
     businessContext = row?.business_context ?? null;
+    // ponytail: pass Target label only; include key if analysis ever needs grouping
+    target = extractTargetLabel(row?.metadata_json);
     log.info(
-      { sessionId, hasContext: !!businessContext, partnerName: row?.name },
+      {
+        sessionId,
+        hasContext: !!businessContext,
+        partnerName: row?.name,
+        hasTarget: !!target,
+        targetLabel: target,
+      },
       "fetched partner context for analysis"
     );
   } catch (err: any) {
@@ -42,11 +55,12 @@ export async function runAnalyzeJob(
   let analysis: AnalysisResult;
 
   try {
-    // 1. Run Bedrock classification with business context
+    // 1. Run Bedrock classification with Partner and Target context
     const startTimestamp = Date.now();
     analysis = await analyzeTranscript(transcript, {
       languageHint: languageHint ?? undefined,
       businessContext: businessContext ?? undefined,
+      target,
     });
     log.info(
       {
@@ -55,6 +69,8 @@ export async function runAnalyzeJob(
         inputTokens: analysis.inputTokens,
         outputTokens: analysis.outputTokens,
         sentiment: analysis.sentiment,
+        hasTarget: !!target,
+        targetLabel: target,
       },
       "analysis complete"
     );
@@ -123,6 +139,28 @@ export async function runAnalyzeJob(
     log.error({ sessionId, err: err.message }, "post-analysis error");
     await markFailed(sessionId, "post_analysis_error", log, false);
     throw err;
+  }
+}
+
+function extractTargetLabel(metadataJson: unknown): string | undefined {
+  try {
+    const metadata =
+      typeof metadataJson === "string" ? JSON.parse(metadataJson) : metadataJson;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return undefined;
+    }
+
+    const target = (metadata as Record<string, unknown>).target;
+    if (!target || typeof target !== "object" || Array.isArray(target)) {
+      return undefined;
+    }
+
+    const label = (target as Record<string, unknown>).label;
+    if (typeof label !== "string") return undefined;
+
+    return label.trim() || undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -21,11 +21,12 @@ Widget is JavaScript. Sharing types between the frontend widget, backend API, an
 
 ## AI Classifier: Bedrock Nova Lite + Claude Haiku Fallback
 
-- Nova Lite: ~$0.000066 per session (7× cheaper than Haiku alone)
-- Haiku fallback activates when Nova fails JSON parsing
-- Staying in AWS means IAM-based auth — no extra API key management
-- Bedrock gives model diversity without changing infra
-- Decision tradeoff: Nova Lite hits daily token limits at low usage. Haiku approval requires Bedrock use case form. This is the current blocking issue.
+- Nova Lite remains primary; Claude Haiku is the fallback when Nova invocation fails or returns missing/invalid tool input. If both models fail validation, analysis fails the Session rather than persisting invented Insights.
+- Both models use the shared Bedrock Converse adapter with forced `record_analysis` tool use. Its JSON Schema defines the complete Insights contract, replacing free-text JSON, markdown-fence stripping, and the silent `parse_error` fallback.
+- Business context and Target are separate, labeled Partner-controlled context blocks. The End-user-controlled transcript is a distinct `UNTRUSTED TRANSCRIPT DATA` block, and the system instruction says it is data—not instructions—and cannot override classification rules or the tool schema.
+- Target context lets otherwise identical feedback be interpreted against the location, service, product, or staff member the Session is about.
+- Staying in AWS retains IAM-based auth and model diversity without another provider integration. Existing successful-call `model_used`, `input_tokens`, and `output_tokens` metrics remain the cost-accounting source.
+- Tradeoffs: the classifier is now coupled to the tool schema and topic/flag enums; schema changes require coordinated code and contract-test updates. Forced tool use and structural separation reduce malformed-output and prompt-injection risk, but mocked contracts do not prove live-model quality or eliminate every adversarial-model behavior. Tool definitions and Target context may also change token usage, so production cost must be remeasured.
 
 ---
 

@@ -1,8 +1,9 @@
 // hearloop/apps/api/src/jobs/__tests__/analyze.test.ts
 //
-// Tests for the emit guard in jobs/analyze.ts.
+// Tests for Target context and the emit guard in jobs/analyze.ts.
 //
 // Tasks covered:
+//   Ticket 007 — Target propagation and malformed metadata handling
 //   5.2 — Property tests (fast-check): emit skipped for modelUsed="none",
 //          emit called exactly once for "nova-lite" / "haiku-fallback"
 //   5.3 — Unit tests: emit failure is non-fatal, warn log shape, ordering
@@ -162,6 +163,118 @@ beforeEach(() => {
 
   // enqueueWebhook: default to success
   mockEnqueueWebhook.mockResolvedValue(undefined);
+});
+
+describe("Ticket 007: Target-aware analysis context", () => {
+  it("selects the Session metadata and passes its non-empty Target label to analysis", async () => {
+    mockExecuteTakeFirst
+      .mockResolvedValueOnce({
+        business_context: "Quick-service automotive shop",
+        name: "Acme Motors",
+        metadata_json: JSON.stringify({
+          target: {
+            label: "  North Ave — Oil Change  ",
+            key: "north-ave-oil-change",
+            source: "capture-link",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ partner_id: "partner-1" });
+
+    await runAnalyzeJob({
+      ...BASE_PAYLOAD,
+      languageHint: "en",
+    });
+
+    expect(mockSelectChain.select).toHaveBeenNthCalledWith(1, [
+      "sessions.metadata_json",
+      "partners.business_context",
+      "partners.name",
+    ]);
+    expect(mockAnalyzeTranscript).toHaveBeenCalledWith(BASE_PAYLOAD.transcript, {
+      languageHint: "en",
+      businessContext: "Quick-service automotive shop",
+      target: "North Ave — Oil Change",
+    });
+    expect(mockInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: BASE_PAYLOAD.sessionId,
+        hasContext: true,
+        hasTarget: true,
+        targetLabel: "North Ave — Oil Change",
+      }),
+      "fetched partner context for analysis"
+    );
+  });
+
+  it.each([
+    ["malformed JSON", "{"],
+    ["missing Target", JSON.stringify({ promptText: "Tell us more" })],
+    ["blank Target label", JSON.stringify({ target: { label: "   " } })],
+  ])(
+    "continues analysis without a Target when metadata has %s",
+    async (_case, metadata_json) => {
+      mockExecuteTakeFirst
+        .mockResolvedValueOnce({
+          business_context: null,
+          name: "Acme Motors",
+          metadata_json,
+        })
+        .mockResolvedValueOnce({ partner_id: "partner-1" });
+
+      await expect(runAnalyzeJob(BASE_PAYLOAD)).resolves.toBeUndefined();
+
+      expect(mockAnalyzeTranscript).toHaveBeenCalledWith(
+        BASE_PAYLOAD.transcript,
+        {
+          languageHint: undefined,
+          businessContext: undefined,
+          target: undefined,
+        }
+      );
+      expect(mockInfo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: BASE_PAYLOAD.sessionId,
+          hasTarget: false,
+          targetLabel: undefined,
+        }),
+        "fetched partner context for analysis"
+      );
+    }
+  );
+
+  it("passes the same transcript through two Sessions with different Target labels", async () => {
+    const transcript = "this service took too long and nobody explained it";
+    const targets = [
+      { sessionId: "session-oil", label: "Oil Change" },
+      { sessionId: "session-brake", label: "Brake Inspection" },
+    ];
+
+    for (const { sessionId, label } of targets) {
+      mockExecuteTakeFirst
+        .mockResolvedValueOnce({
+          business_context: "Quick-service automotive shop",
+          name: "Acme Motors",
+          metadata_json: JSON.stringify({
+            target: { label, key: label.toLowerCase(), source: "capture-link" },
+          }),
+        })
+        .mockResolvedValueOnce({ partner_id: "partner-1" });
+
+      await runAnalyzeJob({ sessionId, transcript });
+    }
+
+    expect(mockAnalyzeTranscript).toHaveBeenNthCalledWith(1, transcript, {
+      languageHint: undefined,
+      businessContext: "Quick-service automotive shop",
+      target: "Oil Change",
+    });
+    expect(mockAnalyzeTranscript).toHaveBeenNthCalledWith(2, transcript, {
+      languageHint: undefined,
+      businessContext: "Quick-service automotive shop",
+      target: "Brake Inspection",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
