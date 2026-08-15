@@ -36,9 +36,13 @@ Previously used a single shared queue. This caused a race condition where worker
 
 ---
 
-## Storage: S3 Signed URLs (Not Proxy Through API)
+## Storage: direct S3 upload with staged exact-version pinning
 
-Audio files are uploaded directly from the browser to S3 via a signed URL. The API never proxies audio bytes. This keeps the API server lightweight and avoids bandwidth/memory bottlenecks for large audio blobs. The API only issues and validates the signed URL.
+Audio bytes travel directly from the capture client to S3 through a signed URL;
+the API does not proxy media. S3 versioning, checksum-bound upload grants, and
+exact-version primitives establish the evidence boundary. New Sessions remain
+on the legacy-v0 protocol until capture clients and finalize/workers support the
+versioned contract end to end.
 
 ---
 
@@ -54,29 +58,41 @@ Partners authenticate with `sk-live_` prefixed keys. No JWT complexity, no refre
 
 ---
 
-## HTTPS Proxy: Next.js API Routes (Not Nginx/SSL on EC2)
+## HTTPS: Caddy on EC2 plus same-origin web proxy
 
-EC2 runs HTTP on port 3001. Vercel enforces HTTPS. The browser would block mixed-content requests (HTTPS page → HTTP API). Rather than set up Nginx + Let's Encrypt on EC2 (adds operational burden), the Next.js frontend proxies API calls through Vercel's HTTPS edge. This is a temporary solution — a proper custom domain with SSL on EC2 is in the V2 backlog.
+Caddy terminates public HTTPS for the API at the nip.io endpoint. The Next.js
+application also exposes a same-origin `/api` proxy so browser flows avoid
+cross-origin and mixed-content coupling. The proxy is an application boundary,
+not a substitute for API transport security.
 
 ---
 
-## Infra: EC2 + RDS + ElastiCache (Not Managed Services Only)
+## Infra: EC2 + Neon + Upstash
 
 - EC2 over Lambda: BullMQ workers need a persistent process. Lambda cold starts and execution limits are incompatible with long-running queue workers.
-- RDS over Supabase/Neon: Staying inside AWS for IAM simplicity, avoiding external DB vendor.
-- ElastiCache Valkey over Redis Cloud: AWS recommended, cheaper, 100% BullMQ-compatible.
+- Neon replaced RDS to remove idle database instance cost while retaining
+  PostgreSQL and Kysely.
+- Upstash replaced ElastiCache to remove idle Redis instance cost. Queue polling,
+  health checks, and worker connections are deliberately constrained by its
+  command quota.
 
 ---
 
-## Widget: Vanilla JS IIFE (No Framework)
+## Capture clients: vanilla widget plus React SDK
 
-Partners embed `<script src="...widget.js">`. Zero dependencies means zero bundle conflicts. The widget works in any web stack (plain HTML, React, Vue, Shopify, etc.) without framework negotiation. The tradeoff is no shared type system with the backend — document the API contract clearly.
+The dependency-free `widget.js` supports arbitrary sites. `@hearloop/react`
+provides a typed React integration without forcing React on other Partners.
+Both clients implement the same public Session lifecycle and must move together
+when that protocol changes.
 
 ---
 
 ## Monorepo: npm Workspaces + Turborepo
 
-Single repo for API + Web + DB migrations + shared types. Turborepo handles task caching and parallelism. `packages/types` is a placeholder for future shared TypeScript types between frontend and backend.
+The API, web application, QuickLube demo, React SDK, and database migrations
+share one npm-workspaces repository. Turborepo coordinates build and development
+tasks; workspace boundaries remain explicit rather than introducing a
+speculative shared-types package.
 
 ---
 
@@ -87,4 +103,5 @@ Single repo for API + Web + DB migrations + shared types. Turborepo handles task
 | Cloudflare R2 for storage | AWS S3 | Staying in AWS ecosystem for IAM simplicity; R2 was initially used but R2 SDK adds a thin compatibility layer |
 | Direct Claude API (Anthropic) | AWS Bedrock | Cost, IAM auth, no extra API key |
 | Single BullMQ queue | Per-job-type queues | Race condition with shared queue workers |
-| Vercel Postgres | AWS RDS | EC2 and RDS colocated in same VPC, lower latency |
+| AWS RDS | Neon PostgreSQL | Remove idle instance cost while preserving PostgreSQL |
+| ElastiCache | Upstash Redis | Remove idle instance cost with explicit command-quota guardrails |

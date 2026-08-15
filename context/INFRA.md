@@ -2,7 +2,7 @@
 
 > Contains live IPs and deployment commands. Do not commit secrets here.
 
-Last updated: May 16, 2026
+Last updated: August 15, 2026
 
 ---
 
@@ -23,10 +23,24 @@ Last updated: May 16, 2026
 |---|---|---|---|
 | EC2 | t3.micro | Elastic IP: 18.223.189.193 — API container on port 3001 | ~$8/mo |
 | EBS | 20 GB gp3 | EC2 root volume | ~$1.60/mo |
-| S3 | `hearloop-audio-prod` | Private bucket, CORS enabled for presigned PUT uploads | ~$0.002/mo |
+| S3 | `hearloop-audio-prod` | Private, versioning enabled, CORS enabled for presigned PUT uploads | ~$0.002/mo plus retained-version storage |
 | ECR | `hearloop-api` | Docker image repository, lifecycle policy active | $0 free tier |
 
 **Deleted (May 16, 2026):** RDS t3.micro, ElastiCache Valkey t3.micro, CloudWatch RDSOSMetrics log group
+
+### S3 media evidence capability
+
+- Bucket versioning is enabled; older pre-versioning objects remain legacy
+  null-version objects.
+- CORS retains the widget-compatible origin policy and exposes `ETag`,
+  `x-amz-version-id`, and `x-amz-checksum-sha256`.
+- Application access includes version inspection, exact-version reads, and
+  exact-version deletion under the recording prefixes.
+- No automatic noncurrent-version lifecycle deletion is configured.
+- The August 14 capability probe verified distinct VersionIds, exact-version
+  HEAD/GET integrity, browser-visible headers, scoped listing, and exact cleanup.
+- Checksum-presigned uploads sign `Content-Type` and keep
+  `x-amz-checksum-sha256` signed and unhoisted.
 
 ---
 
@@ -124,15 +138,21 @@ ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193 \
 
 ---
 
-## Database Migrations (Neon)
+## Database migrations (Neon)
 
-All 3 migrations are applied on Neon. To re-run from scratch:
+Migration files are immutable history and must be applied through an explicit
+release gate. File presence does not prove production application. Migration
+`009` is documented as applied; migration `011` is explicitly unapplied. Verify
+the production status of migration `010` before the next release.
+
+To initialize a new database, apply every migration in numeric order rather
+than copying only the original three commands from this document:
 
 ```bash
 NEON_URL="postgresql://neondb_owner:...@...neon.tech/neondb?sslmode=require&channel_binding=require"
-psql "$NEON_URL" -f packages/db/migrations/001_initial.sql
-psql "$NEON_URL" -f packages/db/migrations/002_partner_auth.sql
-psql "$NEON_URL" -f packages/db/migrations/003_metrics_columns.sql
+for migration in packages/db/migrations/*.sql; do
+  psql "$NEON_URL" -f "$migration"
+done
 ```
 
 ---

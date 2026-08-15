@@ -17,17 +17,9 @@ Optional powerful credential (`sk-live_…`) for server-side Partner API calls (
 _Avoid_: Widget embed key, password
 
 **Business context**:
-Plain-text description of what the Partner's business does, used when classifying feedback (e.g. services offered, typical visit). Improves topic and sentiment relevance; optional at signup, editable later.
+Optional plain-text description of what the Partner's business does, entered
+manually or from a starter template and used to interpret feedback.
 _Avoid_: Prompt text (that's per-Session capture copy), webhook URL
-
-
-**Business context import**:
-Partner-initiated one-time website fetch that drafts `business_context` for review in onboarding/settings. Import pre-fills text only; Partner must click Save to persist it. **Mothballed Jul 16, 2026** — built before validating that manual entry (the always-available fallback) is actually a friction point for the locked persona (non-technical local business, often no real website — Google Business Profile/Facebook page instead). No further investment until a real pilot shows manual entry is insufficient. Still functional for the minority with a website; not being extended.
-_Avoid_: Automatic scraping on every Session, page context
-
-**Import source URL**:
-The Partner-provided HTTPS site URL used for business-context import. Stored on `partners.website_url` for re-import and visibility in settings.
-_Avoid_: Webhook URL, capture link
 
 **Widget embed key**:
 The browser-safe credential the Partner pastes into `@hearloop/react` on their site. Identifies which Partner receives new Sessions; can only start the capture flow, not read the dashboard or change Partner settings. Shown in dashboard **Settings → Embed** (not on the one-time signup screen).
