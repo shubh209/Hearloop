@@ -17,8 +17,6 @@ support the versioned contract.
 3. Make Session deletion and expiry delete exact versions; add scoped cleanup
    for abandoned, unpinned upload versions.
 4. Add telemetry, rollout, rollback, and legacy-Session verification.
-5. Apply migration `011_media_evidence_pinning.sql` only through a separately
-   approved migration/release stage.
 
 See `context/research/hearloop-platform-design-roadmap.best-effort-73.5.md` and
 the media-pinning design/plan documents under `docs/superpowers/`.

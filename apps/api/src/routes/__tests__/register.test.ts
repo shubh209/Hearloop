@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { registerRoutes } from "../register";
+import { registerRoutes } from "../../lib/register-routes";
 
 describe("registerRoutes", () => {
   it.each([

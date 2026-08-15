@@ -23,15 +23,16 @@ Last updated: August 15, 2026
 |---|---|---|---|
 | EC2 | t3.micro | Elastic IP: 18.223.189.193 — API container on port 3001 | ~$8/mo |
 | EBS | 20 GB gp3 | EC2 root volume | ~$1.60/mo |
-| S3 | `hearloop-audio-prod` | Private, versioning enabled, CORS enabled for presigned PUT uploads | ~$0.002/mo plus retained-version storage |
+| S3 | `hearloop-audio-prod` | Private, versioning enabled (live `get-bucket-versioning` 2026-08-15: `Status=Enabled`), CORS enabled for presigned PUT uploads | ~$0.002/mo plus retained-version storage |
 | ECR | `hearloop-api` | Docker image repository, lifecycle policy active | $0 free tier |
 
 **Deleted (May 16, 2026):** RDS t3.micro, ElastiCache Valkey t3.micro, CloudWatch RDSOSMetrics log group
 
 ### S3 media evidence capability
 
-- Bucket versioning is enabled; older pre-versioning objects remain legacy
-  null-version objects.
+- Bucket versioning is enabled (AWS `s3api get-bucket-versioning`,
+  2026-08-15, us-east-2, `Status: Enabled`); older pre-versioning objects
+  remain legacy null-version objects.
 - CORS retains the widget-compatible origin policy and exposes `ETag`,
   `x-amz-version-id`, and `x-amz-checksum-sha256`.
 - Application access includes version inspection, exact-version reads, and
@@ -141,9 +142,21 @@ ssh -i ~/.ssh/hearloop-key.pem ec2-user@18.223.189.193 \
 ## Database migrations (Neon)
 
 Migration files are immutable history and must be applied through an explicit
-release gate. File presence does not prove production application. Migration
-`009` is documented as applied; migration `011` is explicitly unapplied. Verify
-the production status of migration `010` before the next release.
+release gate. File presence does not prove production application.
+
+Production Neon (`divine-cherry-94715192`, default branch `production`,
+`br-green-poetry-aj1e0o9v`), applied 2026-08-15 via Neon MCP (`010` then `011`):
+
+| Migration | Production default branch |
+|---|---|
+| `009_business_context_import.sql` | Applied (`partners.website_url`, `business_context_source`) |
+| `010_webhook_delivery_event_id.sql` | Applied (`webhook_deliveries.event_id` uuid NOT NULL, 1/1 rows populated) |
+| `011_media_evidence_pinning.sql` | Applied (`sessions.upload_protocol`, `upload_grants`, `finalize_receipts`, recordings version columns) |
+
+Post-apply verification: 1882/1882 sessions `legacy-v0`, 0 `versioned-v1`, 32 recordings
+with version columns still null, 0 `upload_grants`, 0 `finalize_receipts`. New Sessions
+still default to `legacy-v0`. Rollback remains the commented block at the bottom of
+`011` only while `versioned-v1` count is 0; page before running it.
 
 To initialize a new database, apply every migration in numeric order rather
 than copying only the original three commands from this document:

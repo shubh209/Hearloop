@@ -16,7 +16,7 @@ import { startPipelineWorkers } from "./lib/worker-registry";
 import rateLimit from "@fastify/rate-limit";
 import { rateLimitKey } from "./lib/rate-limit-key";
 import { isPublicRoute } from "./lib/is-public-route";
-import { registerRoutes } from "./routes/register";
+import { registerRoutes } from "./lib/register-routes";
 import {
   authenticatePartner,
   authenticateSecretKey,
