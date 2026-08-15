@@ -1,5 +1,7 @@
 # Control baseline — Cursor adapter — 2026-08-15
 
+Treatment results: [`2026-08-15-codex-harness.md`](./2026-08-15-codex-harness.md).
+
 Condition: `control` (pre-harness `AGENTS.md`; no locked kernel, no `docs/agents/workflow.md`).
 Adapter: `cursor`
 Model: `Cursor Grok 4.6`
