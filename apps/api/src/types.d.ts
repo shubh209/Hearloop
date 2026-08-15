@@ -19,13 +19,6 @@ declare module "fastify" {
       webhookUrl: string | null;
       allowedOrigins: string | null;
       businessContext: string | null;
-      websiteUrl: string | null;
-      businessContextSource:
-        | "manual"
-        | "template"
-        | "import"
-        | "import_edited"
-        | null;
     };
   }
 }
