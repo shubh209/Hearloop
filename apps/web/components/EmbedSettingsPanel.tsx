@@ -1,27 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  BusinessContextImportBlock,
-  BusinessContextSource,
-  resolveBusinessContextSource,
-} from "./BusinessContextImport";
+import { useEffect, useState } from "react";
+import { BusinessContextField } from "./BusinessContextField";
 
 type PartnerProfile = {
   allowedOrigins: string | null;
   embedKeyPrefix: string | null;
   businessContext: string | null;
-  websiteUrl: string | null;
-  businessContextSource: BusinessContextSource | null;
 };
 
 export function EmbedSettingsPanel() {
   const [profile, setProfile] = useState<PartnerProfile | null>(null);
   const [allowedOrigins, setAllowedOrigins] = useState("");
   const [businessContext, setBusinessContext] = useState("");
-  const [websiteUrl, setWebsiteUrl] = useState("");
-  const [source, setSource] = useState<BusinessContextSource>("manual");
-  const importDraftRef = useRef<string | null>(null);
   const [embedKeyOnce, setEmbedKeyOnce] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,8 +26,6 @@ export function EmbedSettingsPanel() {
         setProfile(data);
         setAllowedOrigins(data.allowedOrigins ?? "");
         setBusinessContext(data.businessContext ?? "");
-        setWebsiteUrl(data.websiteUrl ?? "");
-        setSource(data.businessContextSource ?? "manual");
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -49,13 +38,6 @@ export function EmbedSettingsPanel() {
   const saveSettings = async () => {
     setSaving(true);
     setError("");
-    const resolvedSource = businessContext.trim()
-      ? resolveBusinessContextSource(
-          businessContext.trim(),
-          importDraftRef.current,
-          source
-        )
-      : null;
 
     const res = await fetch("/api/partners/me/settings", {
       method: "PATCH",
@@ -63,8 +45,7 @@ export function EmbedSettingsPanel() {
       body: JSON.stringify({
         allowedOrigins: allowedOrigins.trim() || null,
         businessContext: businessContext.trim() || null,
-        websiteUrl: websiteUrl.trim() || null,
-        businessContextSource: resolvedSource,
+        businessContextSource: businessContext.trim() ? "manual" : null,
       }),
     });
     setSaving(false);
@@ -114,7 +95,7 @@ export function EmbedSettingsPanel() {
         <div className="ct">Widget embed</div>
       </div>
       <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 16, lineHeight: 1.5 }}>
-        Add your website URL and paste the widget embed key into{" "}
+        Add allowed website origins and paste the widget embed key into{" "}
         <code style={{ fontSize: 12 }}>@hearloop/react</code>. End-user recordings
         will only work from listed origins.
       </p>
@@ -137,13 +118,9 @@ export function EmbedSettingsPanel() {
         onChange={(e) => setAllowedOrigins(e.target.value)}
       />
 
-      <BusinessContextImportBlock
-        websiteUrl={websiteUrl}
-        onWebsiteUrlChange={setWebsiteUrl}
-        businessContext={businessContext}
-        onBusinessContextChange={setBusinessContext}
-        onSourceChange={setSource}
-        importDraftRef={importDraftRef}
+      <BusinessContextField
+        value={businessContext}
+        onChange={setBusinessContext}
       />
 
       <div style={{ marginBottom: 14, marginTop: 14 }}>

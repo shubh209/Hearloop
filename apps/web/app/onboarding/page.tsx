@@ -1,12 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  BusinessContextImportBlock,
-  BusinessContextSource,
-  resolveBusinessContextSource,
-} from "../../components/BusinessContextImport";
+import { BusinessContextField } from "../../components/BusinessContextField";
 
 const AUTOMOTIVE_TEMPLATE =
   "Quick-service automotive shop. Common visits: oil change, tire rotation, brake service. " +
@@ -16,25 +12,15 @@ const AUTOMOTIVE_TEMPLATE =
 export default function OnboardingPage() {
   const router = useRouter();
   const [businessContext, setBusinessContext] = useState("");
-  const [websiteUrl, setWebsiteUrl] = useState("");
-  const [source, setSource] = useState<BusinessContextSource>("manual");
-  const importDraftRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const saveContext = async (
     context: string | null,
-    sourceOverride?: BusinessContextSource
+    source: "manual" | "template" = "manual"
   ) => {
     setLoading(true);
     setError("");
-    const resolvedSource = context
-      ? resolveBusinessContextSource(
-          context,
-          importDraftRef.current,
-          sourceOverride ?? source
-        )
-      : null;
 
     try {
       const res = await fetch("/api/partners/me/settings", {
@@ -42,8 +28,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           businessContext: context,
-          websiteUrl: websiteUrl.trim() || null,
-          businessContextSource: resolvedSource,
+          businessContextSource: context ? source : null,
         }),
       });
       if (!res.ok) {
@@ -60,8 +45,6 @@ export default function OnboardingPage() {
   };
 
   const useTemplate = () => {
-    importDraftRef.current = null;
-    setSource("template");
     setBusinessContext(AUTOMOTIVE_TEMPLATE);
     void saveContext(AUTOMOTIVE_TEMPLATE, "template");
   };
@@ -82,17 +65,13 @@ export default function OnboardingPage() {
       <div className="card">
         <h1>Tell us about your business</h1>
         <p>
-          Optional. Paste your website to auto-draft a description, or type it
-          yourself. This helps Hearloop label topics and sentiment correctly.
+          Optional. Describe your business or use the starter template. This
+          helps Hearloop label topics and sentiment correctly.
         </p>
 
-        <BusinessContextImportBlock
-          websiteUrl={websiteUrl}
-          onWebsiteUrlChange={setWebsiteUrl}
-          businessContext={businessContext}
-          onBusinessContextChange={setBusinessContext}
-          onSourceChange={setSource}
-          importDraftRef={importDraftRef}
+        <BusinessContextField
+          value={businessContext}
+          onChange={setBusinessContext}
         />
 
         <div className="actions">
