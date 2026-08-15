@@ -1,10 +1,10 @@
 import type { FastifyInstance } from "fastify";
-import { captureLinkRoutes } from "./capture-links";
-import { healthRoutes } from "./health";
-import { partnerMeRoutes } from "./partner-me";
-import { partnerRoutes } from "./partners";
-import { publicRoutes } from "./public";
-import { sessionRoutes } from "./sessions";
+import { captureLinkRoutes } from "../routes/capture-links";
+import { healthRoutes } from "../routes/health";
+import { partnerMeRoutes } from "../routes/partner-me";
+import { partnerRoutes } from "../routes/partners";
+import { publicRoutes } from "../routes/public";
+import { sessionRoutes } from "../routes/sessions";
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(sessionRoutes, { prefix: "/v1" });
