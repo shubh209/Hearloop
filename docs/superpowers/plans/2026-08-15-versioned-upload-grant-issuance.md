@@ -17,6 +17,7 @@
 - Never expose or log signed URLs, storage identifiers, checksums, idempotency keys, Session tokens, VersionIds, or raw provider errors.
 - Versioned request limits are: idempotency key 8–128 visible ASCII characters, UUID upload attempt, supported audio MIME type, 1,000–10,485,760 bytes, canonical Base64 SHA-256, and serialized JSON no larger than 1 KiB.
 - Preserve the legacy `{mimeType}` request and `{uploadUrl,storageKey,expiresIn}` response exactly.
+- Run every `../../node_modules/.bin/jest` command below from `apps/api`; the workspace-local `npm test` script references a nonexistent workspace-local Jest binary.
 
 ---
 
@@ -76,7 +77,7 @@ Add a property test using `fast-check` proving identical semantic fields produce
 Run:
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/lib/__tests__/upload-grants.test.ts
+../../node_modules/.bin/jest --runInBand src/lib/__tests__/upload-grants.test.ts
 ```
 
 Expected: FAIL because `../upload-grants` does not exist.
@@ -188,7 +189,7 @@ Add separate failing tests for:
 Run:
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/lib/__tests__/upload-grants.test.ts
+../../node_modules/.bin/jest --runInBand src/lib/__tests__/upload-grants.test.ts
 ```
 
 Expected: FAIL because the issuer factory and `issueVersionedUploadGrant` do not exist.
@@ -273,7 +274,7 @@ The route must pass trusted `partner.id` and path Session ID, return 201 with th
 Run:
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/routes/__tests__/sessions.test.ts
+../../node_modules/.bin/jest --runInBand src/routes/__tests__/sessions.test.ts
 ```
 
 Expected: FAIL because the route does not select `upload_protocol` or call the issuer.
@@ -317,7 +318,7 @@ Add the same protocol, issuance, replay-header, error mapping, and legacy assert
 Run:
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/routes/__tests__/public.test.ts
+../../node_modules/.bin/jest --runInBand src/routes/__tests__/public.test.ts
 ```
 
 Expected: FAIL because the public route does not select Partner/protocol or call the issuer.
@@ -331,7 +332,7 @@ Select `partner_id` and `upload_protocol` alongside existing Session fields. Pre
 Run:
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts
+../../node_modules/.bin/jest --runInBand src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts
 ```
 
 Expected: both route suites pass without warnings.
@@ -357,7 +358,7 @@ git commit -m "feat(api): wire versioned upload-grant routes"
 - [ ] **Step 1: Run upload-grant and route suites together**
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/lib/__tests__/upload-grants.test.ts src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts
+../../node_modules/.bin/jest --runInBand src/lib/__tests__/upload-grants.test.ts src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts
 ```
 
 Expected: all tests pass, zero failures.
@@ -365,7 +366,7 @@ Expected: all tests pass, zero failures.
 - [ ] **Step 2: Run the complete Task 3 storage unit suite**
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/lib/__tests__/storage.test.ts
+../../node_modules/.bin/jest --runInBand src/lib/__tests__/storage.test.ts
 ```
 
 Expected: 20 tests pass. Do not run the live S3 test unless explicitly authorized with its live-test environment.
@@ -373,7 +374,7 @@ Expected: 20 tests pass. Do not run the live S3 test unless explicitly authorize
 - [ ] **Step 3: Run scoped API regressions**
 
 ```bash
-npm test --workspace=apps/api -- --runInBand src/lib/__tests__/storage.test.ts src/lib/__tests__/upload-grants.test.ts src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts
+../../node_modules/.bin/jest --runInBand src/lib/__tests__/storage.test.ts src/lib/__tests__/upload-grants.test.ts src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts
 ```
 
 Expected: all selected suites pass with zero failures.
