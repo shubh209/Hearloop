@@ -103,6 +103,17 @@ routing:
     changed_code: mattpocock-skills:code-review
 ```
 
+Routing rules:
+
+1. Identify the active stage and task type.
+2. Resolve the primary skill from the router.
+3. Read the selected skill completely before continuing.
+4. Record it in the task contract.
+5. Follow its gates and completion criteria.
+6. Run process skills before implementation skills when more than one skill applies.
+7. Apply instruction priority: user instruction, repository `AGENTS.md`, active task contract, selected skill, model default.
+8. Never silently substitute an overlapping workflow.
+
 If an IDE cannot invoke a named skill but can read the repository, follow this file and report that native skill invocation was unavailable.
 
 ### Missing-skill page

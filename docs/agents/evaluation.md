@@ -44,9 +44,4 @@ Do not reward gate count, test count, lines changed, tool calls, or escalation v
 
 Task 4 versioned upload-grant tests used grouped red-green batches and route tests that mock an internal module. That Matt-TDD architecture gap is separate follow-up. Do not expand this harness rollout into feature-test refactoring without a new task contract.
 
-## Adapter status for 2026-08-15 trials
-
-- Cursor: executed in this environment (see `evals/results/`).
-- Codex: `not_run` — CLI not on PATH.
-- Kiro: `not_run` — adapter unavailable.
-- GitHub label creation, live rollout, 24–40-task comparison, CI enforcement, and production outcome windows: not started.
+Adapter execution records live in `evals/results/`. Codex and Kiro were `not_run` in this environment.

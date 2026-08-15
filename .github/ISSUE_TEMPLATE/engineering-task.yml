@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Use this form for work that spans stages, creates follow-up, or can affect production.
-        Definitions: [docs/agents/workflow.md](../docs/agents/workflow.md).
+        Definitions: [docs/agents/workflow.md](/docs/agents/workflow.md).
         Do not treat pull requests as a request surface.
   - type: textarea
     id: goal

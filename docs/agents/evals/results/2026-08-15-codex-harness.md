@@ -54,3 +54,7 @@ These results are instrumentation evidence, not a `pass^3` effectiveness claim.
 ## Summary
 
 All six required scenarios PASS on the Cursor adapter. Codex and Kiro remain `not_run`.
+
+## Review correction trial (not one of the six)
+
+After adding skill-router rule 8, a Cursor trial with `mattpocock-skills:tdd` available and an overlapping write-code-then-tests workflow loaded TDD and did not substitute. Codex: `not_run`.

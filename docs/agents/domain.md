@@ -5,18 +5,18 @@ How engineering work consumes this repository's domain documentation.
 ## Before exploring, read these
 
 - **`CONTEXT.md`** at the repo root.
-- **`docs/adr/`** — read ADRs that touch the area you are about to work in.
+- **`docs/adr/`** records that touch the area you are about to work in.
 
-If any of these files don't exist, **proceed silently**. Do not flag their absence; do not suggest creating them upfront. Domain files are created when terms or decisions are actually resolved.
+This repository is **single-context**: one glossary at root `CONTEXT.md`. Continue with the files that exist. Create domain files when a term or decision is actually resolved.
 
-This repository is **single-context**: one glossary at root `CONTEXT.md`. There is no `CONTEXT-MAP.md`.
+**Done when:** glossary terms in play are loaded from `CONTEXT.md`, and ADRs that touch the area are loaded when those files exist.
 
 ## Use the glossary's vocabulary
 
-When output names a domain concept, use the term as defined in `CONTEXT.md`. Do not drift to synonyms the glossary explicitly avoids.
-
-If the concept is missing from the glossary, either the work is inventing language the project doesn't use, or there is a real gap to note for later domain modeling.
+When output names a domain concept, use the term as defined in `CONTEXT.md`. If the concept is missing, either the work is inventing language the project doesn't use, or there is a real gap to note for later domain modeling.
 
 ## Flag ADR conflicts
 
-If output contradicts an existing ADR, surface it rather than silently overriding.
+If output contradicts an existing ADR, surface it:
+
+> Contradicts ADR-\<id\> (\<title\>) — worth reopening because…
