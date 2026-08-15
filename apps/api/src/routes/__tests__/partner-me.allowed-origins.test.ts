@@ -81,6 +81,33 @@ describe('PATCH /partners/me/settings → GET /public/session/:token round trip 
     expect(parseAllowedOrigins(storedValue)).toEqual(inputOrigins);
   });
 
+  it('persists manually entered business context with a manual source', async () => {
+    const { app, handlers } = makeApp();
+    await partnerMeRoutes(app);
+    const reply = makeReply();
+
+    await handlers['PATCH /partners/me/settings'](
+      {
+        partner: { id: 'partner-1' },
+        body: {
+          businessContext: 'Independent automotive service center',
+          businessContextSource: 'manual',
+        },
+      },
+      reply
+    );
+
+    expect(reply.code).not.toHaveBeenCalledWith(400);
+    expect(mockSet).toHaveBeenCalledWith({
+      business_context: 'Independent automotive service center',
+      business_context_source: 'manual',
+    });
+    expect(reply.send).toHaveBeenCalledWith({
+      ok: true,
+      updated: ['business_context', 'business_context_source'],
+    });
+  });
+
   it('does not expose retired website import metadata in the Partner profile', async () => {
     const { app, handlers } = makeApp();
     await partnerMeRoutes(app);

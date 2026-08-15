@@ -12,13 +12,7 @@ validateEnv();
 
 import Fastify from "fastify";
 import { jobLogger } from "./lib/logger";
-import { createWorker } from "./lib/queue";
-import { runValidateRecordingJob } from "./jobs/validate-recording";
-import { runTranscribeJob } from "./jobs/transcribe";
-import { runAnalyzeJob } from "./jobs/analyze";
-import { runDeliverWebhookJob } from "./jobs/deliver-webhook";
-import { runExpireSessionJob } from "./jobs/expire-session";
-import { Job } from "bullmq";
+import { startPipelineWorkers } from "./lib/worker-registry";
 import rateLimit from "@fastify/rate-limit";
 import { rateLimitKey } from "./lib/rate-limit-key";
 import { isPublicRoute } from "./lib/is-public-route";
@@ -63,41 +57,11 @@ function startWorkers() {
   workersStarted = true;
 
   const workerLog = jobLogger("worker");
-
-  const transcribeWorker = createWorker("transcribe", async (job: Job) => {
-    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "transcribe job started");
-    await runTranscribeJob(job.data);
-  });
-
-  const analyzeWorker = createWorker("analyze", async (job: Job) => {
-    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "analyze job started");
-    await runAnalyzeJob(job.data);
-  });
-
-  const validateWorker = createWorker("validate-recording", async (job: Job) => {
-    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "validate job started");
-    await runValidateRecordingJob(job.data);
-  });
-
-  const webhookWorker = createWorker("deliver-webhook", async (job: Job) => {
-    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "webhook job started");
-    await runDeliverWebhookJob(job.data);
-  });
-
-  const expireWorker = createWorker("expire-session", async (job: Job) => {
-    workerLog.info({ jobId: job.id, sessionId: job.data.sessionId }, "expire job started");
-    await runExpireSessionJob(job.data);
-  });
+  const workers = startPipelineWorkers(workerLog);
 
   const shutdown = async () => {
     app.log.info("Shutting down workers...");
-    await Promise.all([
-      validateWorker.close(),
-      transcribeWorker.close(),
-      analyzeWorker.close(),
-      webhookWorker.close(),
-      expireWorker.close(),
-    ]);
+    await Promise.all(workers.map((worker) => worker.close()));
     // Each worker closes its own dedicated connection when worker.close() resolves
     process.exit(0);
   };

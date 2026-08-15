@@ -13,7 +13,7 @@
 //     so no Queue instance stays alive between jobs
 //
 // Idle Redis command budget:
-//   5 workers × concurrency:1 × drainDelay:600s × ~8 cmds/poll = ~576 cmds/day
+//   5 workers × (86,400s/day ÷ 600s) × ~8 cmds/poll = ~5,760 cmds/day
 //   Well under the 15K/day safe ceiling (Upstash 500K/month ÷ 30 − headroom)
 
 import { Queue, Worker, Job, JobsOptions } from "bullmq";

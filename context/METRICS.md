@@ -596,3 +596,22 @@ WHERE s.status = 'completed'
 - **Result:** 65 checks passed, 0 failures, 2 low-severity warnings (on 404 pages only)
 - **How measured:** `docker run ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t https://18-223-189-193.nip.io`
 - **Full report:** `testing/vulnerability-security/zap-results/zap-summary.md`
+
+---
+
+## Evidence-gated repository cleanup — August 15, 2026
+
+The cleanup retired the inactive Crawl4AI import path while preserving manual
+business-context entry, migration history, the QuickLube demo, and career
+material.
+
+| Metric | Before | After | Delta | How measured |
+|---|---:|---:|---:|---|
+| Always-loaded `AGENTS.md` lines | 376 | 31 | -345 (-91.8%) | `git show 22dfd16:AGENTS.md \| wc -l`; `wc -l AGENTS.md` |
+| Direct package declarations proven unused | 4 | 0 | -4 (-100%) | Compared root/API manifests for `@jridgewell/trace-mapping`, `@anthropic-ai/sdk`, `ts-jest`, and `@types/pino` |
+| Retired business-context import endpoints registered | 2 | 0 | -2 (-100%) | Public route-registration regression test; both former endpoints now return Fastify's normal 404 |
+| Tracked implementation/documentation lines in initial cleanup implementation | 2,523 removed | 880 added | -1,643 net lines | `git diff --numstat 22dfd16...7caf53e` summed across text files |
+
+The line delta includes the detailed cleanup implementation plan added for
+reviewability. It excludes approved untracked local artifacts removed from the
+main workspace because Git has no reliable line baseline for those files.

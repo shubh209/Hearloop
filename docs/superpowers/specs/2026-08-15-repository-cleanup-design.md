@@ -72,9 +72,9 @@ Remove these direct package declarations:
 Regenerate `package-lock.json` through npm rather than editing it manually.
 Remove compiler-confirmed unused imports in `groq.ts` and `storage.ts`.
 
-`maxDurationSec` is excluded from cleanup. Its payload is accepted but unused,
-which may be a correctness defect rather than dead syntax. Record it as a
-separate follow-up instead of silently changing validation behavior.
+`maxDurationSec` is excluded from cleanup because it remains live behavior: the
+session routes persist it, finalize passes it through the validation queue, the
+recording validator enforces it, and capture clients use it for their countdown.
 
 ### 3. Consolidate tracked documentation
 
@@ -100,6 +100,13 @@ Delete tracked artifacts whose operational purpose has ended:
 - `testing/spike/` Crawl4AI artifacts;
 - `voice_micro_feedback_sdk_api_spec.pdf`;
 - empty `.vscode/settings.json`.
+
+**Review reconciliation:** keep `context/PHASE1_PLATFORM.md` as a minimal
+history pointer instead of deleting the path. The protected
+`career/interview-prep/INTERVIEW_PREP.md` links to it, and changing protected
+career material or knowingly leaving its link broken would violate the
+stronger scope boundary. The original phase checklist remains deleted; the
+six-line pointer contains no duplicate operating guidance.
 
 Keep recent `context/research/` reports, `docs/agents/`, current media-pinning
 designs/plans, security/load-test assets, and `.cursor/rules/`.
