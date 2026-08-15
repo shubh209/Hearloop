@@ -15,6 +15,7 @@ export interface SessionsTable {
     | "failed"
     | "expired"
   >;
+  upload_protocol: Generated<"legacy-v0" | "versioned-v1">;
   failure_reason: string | null;
   external_event_id: string | null;
   max_duration_sec: number;
@@ -34,7 +35,54 @@ export interface RecordingsTable {
   duration_ms: number | null;
   size_bytes: number;
   sha256_hash: string;
+  storage_bucket: string | null;
+  object_version_id: string | null;
+  etag: string | null;
+  checksum_sha256: string | null;
+  upload_grant_id: string | null;
+  pinned_at: Date | null;
   created_at: Generated<Date>;
+}
+
+export interface UploadGrantsTable {
+  id: Generated<string>;
+  partner_id: string;
+  session_id: string;
+  upload_attempt_id: string;
+  idempotency_key: string;
+  request_hash: string;
+  response_json: string;
+  storage_bucket: string;
+  storage_key: string;
+  expected_mime_type: string;
+  expected_size_bytes: number;
+  expected_checksum_sha256: string;
+  expires_at: Date;
+  state: Generated<"available" | "cleanup_claimed" | "pinned" | "cleaned">;
+  cleanup_lease_token: string | null;
+  cleanup_lease_until: Date | null;
+  cleanup_attempts: Generated<number>;
+  pinned_at: Date | null;
+  cleaned_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface FinalizeReceiptsTable {
+  id: Generated<string>;
+  partner_id: string;
+  session_id: string;
+  upload_grant_id: string;
+  idempotency_key: string;
+  request_hash: string;
+  status: "verifying" | "completed";
+  response_status: number | null;
+  response_json: string | null;
+  verification_lease_token: string | null;
+  verification_lease_until: Date | null;
+  expires_at: Generated<Date>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface AnalysesTable {
@@ -127,4 +175,6 @@ export interface Database {
   webhook_deliveries: WebhookDeliveriesTable;
   session_create_tokens: SessionCreateTokensTable;
   capture_links: CaptureLinksTable;
+  upload_grants: UploadGrantsTable;
+  finalize_receipts: FinalizeReceiptsTable;
 }
