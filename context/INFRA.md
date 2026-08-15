@@ -145,19 +145,18 @@ Migration files are immutable history and must be applied through an explicit
 release gate. File presence does not prove production application.
 
 Production Neon (`divine-cherry-94715192`, default branch `production`,
-`br-green-poetry-aj1e0o9v`), inspected 2026-08-15 via Neon MCP (read-only):
+`br-green-poetry-aj1e0o9v`), applied 2026-08-15 via Neon MCP (`010` then `011`):
 
 | Migration | Production default branch |
 |---|---|
 | `009_business_context_import.sql` | Applied (`partners.website_url`, `business_context_source`) |
-| `010_webhook_delivery_event_id.sql` | **Not applied** (`webhook_deliveries.event_id` absent) |
-| `011_media_evidence_pinning.sql` | **Not applied** (no `upload_protocol`, `upload_grants`, or `finalize_receipts`) |
+| `010_webhook_delivery_event_id.sql` | Applied (`webhook_deliveries.event_id` uuid NOT NULL, 1/1 rows populated) |
+| `011_media_evidence_pinning.sql` | Applied (`sessions.upload_protocol`, `upload_grants`, `finalize_receipts`, recordings version columns) |
 
-Preview proof (not production): branch `mig-011-preview` applied `010` then `011`.
-Existing clone data: 1882/1882 sessions `legacy-v0`, 0 `versioned-v1`, 32 recordings
-with nullable version fields still null. Shell contract
-`packages/db/tests/011_media_evidence_pinning.test.sh` PASS on throwaway branch
-`mig-011-shell-test`. Production apply waits on the human PR check for #2.
+Post-apply verification: 1882/1882 sessions `legacy-v0`, 0 `versioned-v1`, 32 recordings
+with version columns still null, 0 `upload_grants`, 0 `finalize_receipts`. New Sessions
+still default to `legacy-v0`. Rollback remains the commented block at the bottom of
+`011` only while `versioned-v1` count is 0; page before running it.
 
 To initialize a new database, apply every migration in numeric order rather
 than copying only the original three commands from this document:

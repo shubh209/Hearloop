@@ -9,9 +9,9 @@
 
 - Metric: production schema objects for media evidence pinning; S3 versioning; existing Session protocol
 - Before: `011` absent on Neon `divine-cherry-94715192` / `production` (no `sessions.upload_protocol`, no `upload_grants`, no `finalize_receipts`, recordings lack version columns). `010` also absent (`webhook_deliveries.event_id` missing). 1882 sessions. S3 `hearloop-audio-prod` versioning claimed in INFRA only.
-- After (non-production): S3 versioning live read-back `Status=Enabled`. Preview branch `mig-011-preview`: 1882/1882 sessions `legacy-v0`, 0 `versioned-v1`, 32 recordings with all version columns null. Shell contract PASS on `mig-011-shell-test`. **Production still unapplied** pending PR check.
-- Delta: preview clone compatible; production schema unchanged
-- How measured: `aws s3api get-bucket-versioning --bucket hearloop-audio-prod --region us-east-2`; Neon MCP `run_sql` on default vs preview; `bash packages/db/tests/011_media_evidence_pinning.test.sh`
+- After: S3 versioning `Status=Enabled`. Production `010`+`011` applied on `divine-cherry-94715192` / `production` (`br-green-poetry-aj1e0o9v`). 1882/1882 sessions `legacy-v0`, 0 `versioned-v1`, 32 recordings with version columns null, `upload_grants` and `finalize_receipts` present and empty. `webhook_deliveries.event_id` present (1/1). Shell contract previously PASS on throwaway `mig-011-shell-test`.
+- Delta: production schema gained 010+011 objects; existing Session protocol unchanged (`legacy-v0`)
+- How measured: `aws s3api get-bucket-versioning --bucket hearloop-audio-prod --region us-east-2`; Neon MCP `run_sql` on default branch after apply; `bash packages/db/tests/011_media_evidence_pinning.test.sh` (preview)
 
 ---
 

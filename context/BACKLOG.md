@@ -17,11 +17,6 @@ support the versioned contract.
 3. Make Session deletion and expiry delete exact versions; add scoped cleanup
    for abandoned, unpinned upload versions.
 4. Add telemetry, rollout, rollback, and legacy-Session verification.
-5. Apply migration `011_media_evidence_pinning.sql` only through a separately
-   approved migration/release stage. **Not yet applied on production**
-   (2026-08-15). Preview-branch proof exists; production apply is gated on the
-   human PR check for GitHub Issue #2. Production is also still missing
-   `010_webhook_delivery_event_id.sql`; that release must apply `010` then `011`.
 
 See `context/research/hearloop-platform-design-roadmap.best-effort-73.5.md` and
 the media-pinning design/plan documents under `docs/superpowers/`.
