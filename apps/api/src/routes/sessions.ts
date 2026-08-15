@@ -5,6 +5,10 @@ import { db } from "../lib/db";
 import { getUploadSignedUrl, deleteAudio, buildStorageKey } from "../lib/storage";
 import { enqueueValidate, enqueueExpireSession } from "../lib/queue";
 import { randomUUID } from "crypto";
+import {
+  issueVersionedUploadGrant,
+  UploadGrantError,
+} from "../lib/upload-grants";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -198,7 +202,7 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       const session = await db
         .selectFrom("sessions")
-        .select(["id", "status", "partner_id"])
+        .select(["id", "status", "partner_id", "upload_protocol"])
         .where("id", "=", id)
         .where("partner_id", "=", partner.id)
         .executeTakeFirst();
@@ -209,6 +213,28 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       if (!["opened", "recording"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
+      }
+
+      if (session.upload_protocol === "versioned-v1") {
+        try {
+          const result = await issueVersionedUploadGrant({
+            partnerId: partner.id,
+            sessionId: id,
+            idempotencyKey: req.headers["idempotency-key"],
+            body: req.body,
+          });
+          if (result.replayed) {
+            reply.header("Idempotent-Replayed", "true");
+          }
+          return reply.code(201).send(result.response);
+        } catch (error) {
+          if (error instanceof UploadGrantError) {
+            return reply
+              .code(error.statusCode)
+              .send({ error: error.errorCode });
+          }
+          throw error;
+        }
       }
 
       const { uploadUrl, storageKey } = await getUploadSignedUrl(

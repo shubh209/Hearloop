@@ -12,6 +12,10 @@ import {
   isOriginAllowed,
   parseAllowedOrigins,
 } from "../lib/lookup-api-key";
+import {
+  issueVersionedUploadGrant,
+  UploadGrantError,
+} from "../lib/upload-grants";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -283,7 +287,13 @@ export async function publicRoutes(app: FastifyInstance) {
 
       const session = await db
         .selectFrom("sessions")
-        .select(["id", "status", "expires_at"])
+        .select([
+          "id",
+          "partner_id",
+          "status",
+          "expires_at",
+          "upload_protocol",
+        ])
         .where("public_token", "=", token)
         .executeTakeFirst();
 
@@ -297,6 +307,28 @@ export async function publicRoutes(app: FastifyInstance) {
 
       if (!["opened", "recording"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
+      }
+
+      if (session.upload_protocol === "versioned-v1") {
+        try {
+          const result = await issueVersionedUploadGrant({
+            partnerId: session.partner_id,
+            sessionId: session.id,
+            idempotencyKey: req.headers["idempotency-key"],
+            body: req.body,
+          });
+          if (result.replayed) {
+            reply.header("Idempotent-Replayed", "true");
+          }
+          return reply.code(201).send(result.response);
+        } catch (error) {
+          if (error instanceof UploadGrantError) {
+            return reply
+              .code(error.statusCode)
+              .send({ error: error.errorCode });
+          }
+          throw error;
+        }
       }
 
       const { uploadUrl, storageKey } = await getUploadSignedUrl(session.id, mimeType);
