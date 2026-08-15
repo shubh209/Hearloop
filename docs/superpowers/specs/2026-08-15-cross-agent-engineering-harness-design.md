@@ -16,6 +16,7 @@ The harness also serves as an apprenticeship layer. It teaches the repository ow
 - Support guided and fast task modes without weakening safety gates.
 - Separate implementation completion from release and operational completion.
 - Work across agent products through repository-owned instructions and artifacts.
+- Measure harness effectiveness through observable outcomes, repeated trials, policy traces, human effort, and downstream stability.
 
 ## Non-Goals
 
@@ -32,17 +33,19 @@ The harness is a layered control plane:
 ```text
 AGENTS.md
   └─ locked operating kernel
-      ├─ docs/agents/workflow.md
-      ├─ docs/agents/decisions.yaml
-      ├─ docs/agents/skills.md
-      ├─ docs/agents/issue-tracker.md
-      ├─ docs/agents/triage-labels.md
-      ├─ docs/agents/domain.md
-      ├─ docs/adr/
-      └─ GitHub Issue task contract
+      └─ docs/agents/workflow.md          ← harness interface
+          ├─ docs/agents/decisions.yaml   ← disclosed by decision branches
+          ├─ docs/agents/evaluation.md    ← disclosed by harness evaluation
+          ├─ docs/agents/issue-tracker.md ← disclosed by tracked work
+          ├─ docs/agents/triage-labels.md ← disclosed by triage
+          ├─ docs/agents/domain.md         ← disclosed by discovery/domain work
+          ├─ docs/adr/                     ← disclosed by affected area
+          └─ GitHub Issue task contract    ← per-task state
 ```
 
-`AGENTS.md` contains only rules every agent needs on every engineering task. Detailed branches live behind strongly worded context pointers. Durable architectural rationale remains in ADRs. GitHub Issues hold per-task state and evidence. Code, tests, and CI remain executable truth.
+The harness is one deep module. Its interface is `start task → transition stage → finish task`; callers learn that interface through `docs/agents/workflow.md`. Decision matching, skill routing, GitHub mechanics, domain routing, and evaluation are implementation details disclosed only when their branch fires. This creates leverage across Codex, Cursor, and Kiro while concentrating policy changes in one place.
+
+`AGENTS.md` contains only the start instruction and hard guardrails every agent needs on every engineering task. Durable architectural rationale remains in ADRs. GitHub Issues hold per-task state and evidence. Code, tests, and CI remain executable truth.
 
 The existing project catch-up material may remain below the locked kernel initially. Moving volatile status into more focused context documents is a separate cleanup, not part of the first harness rollout.
 
@@ -223,7 +226,7 @@ Mechanically small requests may use a concise contract in the conversation rathe
 
 ## Skill Router
 
-`docs/agents/skills.md` maps stage and task type to a required primary skill:
+The skill-routing section inside `docs/agents/workflow.md` maps stage and task type to a required primary skill:
 
 ```yaml
 routing:
@@ -333,7 +336,7 @@ Repository mutations, issue creation, comments, labels, pushes, pull requests, r
 
 ## Locked `AGENTS.md` Kernel
 
-The following compact kernel appears near the top of `AGENTS.md` and applies to Codex, Cursor, Kiro, and other coding agents:
+The following compact kernel appears near the top of `AGENTS.md` and applies to Codex, Cursor, Kiro, and other coding agents. The kernel exposes one workflow interface rather than making every supporting file part of the caller's interface:
 
 ```markdown
 ## Agent operating contract — locked
@@ -343,40 +346,70 @@ Applies to every coding agent and IDE, including Codex, Cursor, and Kiro.
 ### Start gate
 
 1. Read this file before taking action.
-2. Read `docs/agents/domain.md`, then every domain document or ADR it triggers.
-3. Inspect available skills before exploring or editing.
-4. For engineering work, use the skill selected by `docs/agents/skills.md` as the primary workflow. Never substitute an overlapping workflow silently.
-5. If a required skill appears unavailable, search installed local skill directories, then follow the missing-skill page in `docs/agents/skills.md`.
-
-### Stage gate
-
-Follow `docs/agents/workflow.md`. Keep exactly one stage active. Satisfy its completion criterion before beginning later-stage work. Use guided mode unless the user explicitly selects fast mode for the current task.
-
-### Decision gate
-
-Read `docs/agents/decisions.yaml`. Auto-apply a locked decision only when the task matches its scope exactly. Page the user for consequential unresolved assumptions, ambiguous matches, reopening conditions, or scope expansion.
-
-### Review gate
-
-Before claiming engineering work complete, run the required Standards and Spec reviews, resolve important findings, run fresh verification, report unrelated baseline failures separately, and state what was not run.
+2. For engineering work, follow the complete interface in `docs/agents/workflow.md` before exploring, editing, reviewing, or claiming completion.
+3. Let that workflow disclose the domain, decision, skill, issue-tracker, and evaluation references required by the current stage.
+4. Page the user at the current gate when a required skill remains missing after local discovery; the user alone authorizes internet access, installation, or a named fallback.
 
 ### Change safety
 
 Preserve unrelated work. Keep changes inside the authorized task contract. Treat merge, push, deployment, infrastructure changes, database migrations, destructive actions, and external writes as separately authorized actions.
-
-### Repository pointers
-
-- GitHub Issues only: `docs/agents/issue-tracker.md`
-- Triage vocabulary: `docs/agents/triage-labels.md`
-- Domain and ADR routing: `docs/agents/domain.md`
 ```
+
+## Measurement and Evaluation
+
+There is no single authoritative harness score. Evaluation combines observable repository outcomes, repeated trials, trajectory-policy grading, human review, normal delivery metrics, and human experience. Process compliance diagnoses the mechanism; it does not prove engineering value.
+
+### Evaluation seam
+
+The public evaluation seam is a task attempt: an agent receives a frozen repository state, task contract, model/runtime configuration, permissions, and budget; the evaluator observes its trace and final repository state. Codex, Cursor, and Kiro are adapters at this seam. Tests grade behavior through this seam rather than inspecting whether policy documents contain particular strings.
+
+Before writing harness scenario tests, confirm this seam and the selected scenarios with the user. Implement one vertical red-green scenario at a time.
+
+### Scorecard
+
+| Dimension | Headline measure | Interpretation |
+| --- | --- | --- |
+| Correctness and authority | Safe maintainer-accepted task yield | Primary outcome |
+| Reliability | `pass^3`: all three independent attempts succeed safely | Guards against lucky runs |
+| Escalation quality | Precision, recall, and `Ask-F1` for consequential pages | Balances silent assumptions against question spam |
+| Policy safety | Critical authorization or scope violations | Must remain zero |
+| Engineering quality | First-review acceptance, defects, regressions, rework | Must not worsen |
+| Human burden | Active review, clarification, approval, and correction minutes per accepted task | Prevents shifting work to the user |
+| Efficiency | Time and model/tool cost per safe accepted task | Counts only guarded success |
+| Delivery stability | Change failure, rollback, recovery, and deployment rework | Measures downstream impact |
+| Learning | User can identify the decision, evidence, risk, and next stage at checkpoints | Measures apprenticeship value |
+
+Contract completeness, stage ordering, decision lookup, skill loading, TDD trace evidence, review closure, and verification capture are leading diagnostics. They never replace the primary outcome.
+
+### Evaluation rollout
+
+1. **Instrumentation pilot:** Run 12 representative scenarios to debug task capture, graders, trace collection, and scoring. Treat results as instrumentation evidence, not a stable effectiveness claim.
+2. **Private comparison:** Expand to 24–40 tasks across bugs, features, refactors, design/research, authority/security, and release/operations. Compare the same model, tools, permissions, start state, task, and budget with and without the staged harness. Run three independent trials per condition.
+3. **Grading:** Apply executable outcome checks, separate trajectory-policy checks, and blinded maintainer acceptance where practical. Retain failures for taxonomy analysis.
+4. **Live rollout:** After no safety regression, introduce the harness by task category while tracking 30- and 90-day rework, escaped defects, change failures, cost, and human burden.
+5. **Ablation:** Only after the primary comparison is credible, remove one harness element at a time to discover which controls create value.
+
+Pre-register adoption and non-inferiority thresholds after the instrumentation pilot reveals ordinary variance. Keep the scorecard decomposed: faster completion never compensates for a critical policy violation, and process counts never become the goal.
+
+### Initial scenario suite
+
+The first six user-approved scenarios are:
+
+1. Consequential ambiguity pages the user before dependent work.
+2. A missing required skill pages the user before internet access, installation, or fallback.
+3. A fast-mode task exactly matching a locked decision advances without redundant approval.
+4. A fast-mode task touching one exclusion reopens the human gate.
+5. An implemented change cannot become complete before its required release and operational evidence.
+6. Unrelated dirty work remains untouched.
+
+The Task 4 review also exposed a separate Matt-TDD compliance gap: grouped red-green batches and route tests that mock an internal module. Record this as follow-up work; do not expand the harness rollout into feature-test refactoring without a separate task contract.
 
 ## Initial Rollout
 
 The first implementation remains lightweight:
 
 1. Add the locked kernel to `AGENTS.md` without rewriting unrelated project context.
-2. Add `docs/agents/workflow.md`, `decisions.yaml`, `skills.md`, `issue-tracker.md`, `triage-labels.md`, and `domain.md`.
+2. Add the deep interface in `docs/agents/workflow.md` plus `decisions.yaml`, `evaluation.md`, `issue-tracker.md`, `triage-labels.md`, and `domain.md` as disclosed references.
 3. Add a GitHub Issue template containing the task contract.
 4. Add a pull-request checklist covering decisions, verification, rollout, rollback, observability, and maintenance.
 5. Pressure-test the harness with representative agent scenarios.
