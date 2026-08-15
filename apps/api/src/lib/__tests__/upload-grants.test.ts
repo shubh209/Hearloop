@@ -1,9 +1,13 @@
 import fc from "fast-check";
 import {
+  createUploadGrantIssuer,
   hashUploadGrantRequest,
   parseUploadGrantRequest,
+  UploadGrantDependencies,
   UploadGrantError,
+  UploadGrantRow,
   VersionedUploadGrantRequest,
+  VersionedUploadGrantResponse,
 } from "../upload-grants";
 
 const VALID_BODY: VersionedUploadGrantRequest = {
@@ -152,5 +156,287 @@ describe("hashUploadGrantRequest", () => {
       ),
       { numRuns: 100 }
     );
+  });
+});
+
+const PARTNER_ID = "11111111-1111-4111-8111-111111111111";
+const SESSION_ID = "44444444-4444-4444-8444-444444444444";
+const GRANT_ID = "55555555-5555-4555-8555-555555555555";
+const EXPIRES_AT = new Date("2026-08-15T20:15:00.000Z");
+
+const SIGNED_UPLOAD = {
+  bucket: "private-test-bucket",
+  key: `recordings/${PARTNER_ID}/${SESSION_ID}/${VALID_BODY.uploadAttemptId}.webm`,
+  uploadUrl: "https://storage.example.test/signed-put",
+  expiresAt: EXPIRES_AT,
+  requiredHeaders: {
+    "Content-Type": VALID_BODY.mimeType,
+    "x-amz-checksum-sha256": VALID_BODY.checksumSha256,
+  },
+};
+
+function storedResponse(
+  overrides: Partial<VersionedUploadGrantResponse> = {}
+): VersionedUploadGrantResponse {
+  return {
+    uploadId: GRANT_ID,
+    uploadUrl: SIGNED_UPLOAD.uploadUrl,
+    storageKey: SIGNED_UPLOAD.key,
+    expiresAt: EXPIRES_AT.toISOString(),
+    requiredHeaders: SIGNED_UPLOAD.requiredHeaders,
+    ...overrides,
+  };
+}
+
+function storedRow(
+  overrides: Partial<UploadGrantRow> = {}
+): UploadGrantRow {
+  return {
+    id: GRANT_ID,
+    partner_id: PARTNER_ID,
+    session_id: SESSION_ID,
+    upload_attempt_id: VALID_BODY.uploadAttemptId,
+    idempotency_key: "grant-key-0001",
+    request_hash: hashUploadGrantRequest(VALID_BODY),
+    response_json: JSON.stringify(storedResponse()),
+    storage_bucket: SIGNED_UPLOAD.bucket,
+    storage_key: SIGNED_UPLOAD.key,
+    expected_mime_type: VALID_BODY.mimeType,
+    expected_size_bytes: VALID_BODY.sizeBytes,
+    expected_checksum_sha256: VALID_BODY.checksumSha256,
+    expires_at: EXPIRES_AT,
+    ...overrides,
+  };
+}
+
+function makeDependencies(initialRows: UploadGrantRow[] = []) {
+  const rows = [...initialRows];
+  const dependencies: UploadGrantDependencies = {
+    findByIdempotencyKey: jest.fn(async (sessionId, idempotencyKey) =>
+      rows.find(
+        (row) =>
+          row.session_id === sessionId &&
+          row.idempotency_key === idempotencyKey
+      )
+    ),
+    findByAttemptId: jest.fn(async (sessionId, uploadAttemptId) =>
+      rows.find(
+        (row) =>
+          row.session_id === sessionId &&
+          row.upload_attempt_id === uploadAttemptId
+      )
+    ),
+    insertGrant: jest.fn(async (row) => {
+      rows.push(row);
+    }),
+    signUpload: jest.fn(async () => SIGNED_UPLOAD),
+    createId: jest.fn(() => GRANT_ID),
+  };
+  return { rows, dependencies };
+}
+
+const VALID_INPUT = {
+  partnerId: PARTNER_ID,
+  sessionId: SESSION_ID,
+  idempotencyKey: "grant-key-0001",
+  body: VALID_BODY,
+};
+
+describe("createUploadGrantIssuer", () => {
+  it("persists and returns a new checksum-bound upload grant", async () => {
+    const { rows, dependencies } = makeDependencies();
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    const result = await issuer.issue(VALID_INPUT);
+
+    expect(result).toEqual({ response: storedResponse(), replayed: false });
+    expect(rows).toEqual([
+      {
+        id: GRANT_ID,
+        partner_id: PARTNER_ID,
+        session_id: SESSION_ID,
+        upload_attempt_id: VALID_BODY.uploadAttemptId,
+        idempotency_key: "grant-key-0001",
+        request_hash:
+          "8dd5aeb1a323f95fb03c8fe6dfb7f162ea4222d4eecce206048c9e9560f1f95a",
+        response_json: JSON.stringify(storedResponse()),
+        storage_bucket: SIGNED_UPLOAD.bucket,
+        storage_key: SIGNED_UPLOAD.key,
+        expected_mime_type: "audio/webm",
+        expected_size_bytes: 4096,
+        expected_checksum_sha256:
+          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        expires_at: EXPIRES_AT,
+      },
+    ]);
+    expect(dependencies.signUpload).toHaveBeenCalledWith({
+      storageKey: SIGNED_UPLOAD.key,
+      mimeType: "audio/webm",
+      checksumSha256:
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      expiresInSeconds: 900,
+    });
+  });
+
+  it("replays an identical key and request without signing again", async () => {
+    const { dependencies } = makeDependencies();
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    const first = await issuer.issue(VALID_INPUT);
+    const replay = await issuer.issue(VALID_INPUT);
+
+    expect(replay).toEqual({ response: first.response, replayed: true });
+    expect(dependencies.signUpload).toHaveBeenCalledTimes(1);
+    expect(dependencies.insertGrant).toHaveBeenCalledTimes(1);
+  });
+
+  it("converges a different key for the same attempt and media", async () => {
+    const { dependencies } = makeDependencies([storedRow()]);
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    const result = await issuer.issue({
+      ...VALID_INPUT,
+      idempotencyKey: "grant-key-0002",
+    });
+
+    expect(result).toEqual({ response: storedResponse(), replayed: true });
+    expect(dependencies.signUpload).not.toHaveBeenCalled();
+  });
+
+  it("rejects the same idempotency key with different content", async () => {
+    const { dependencies } = makeDependencies([storedRow()]);
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(
+      issuer.issue({
+        ...VALID_INPUT,
+        body: { ...VALID_BODY, sizeBytes: 4097 },
+      })
+    ).rejects.toMatchObject({
+      statusCode: 422,
+      errorCode: "idempotency_key_reused",
+    });
+  });
+
+  it.each([
+    { mimeType: "audio/mp4" },
+    { sizeBytes: 4097 },
+    { checksumSha256: Buffer.alloc(32, 1).toString("base64") },
+  ])("rejects changed media for the same upload attempt: %p", async (change) => {
+    const { dependencies } = makeDependencies([storedRow()]);
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(
+      issuer.issue({
+        ...VALID_INPUT,
+        idempotencyKey: "grant-key-0002",
+        body: { ...VALID_BODY, ...change },
+      })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      errorCode: "upload_attempt_conflict",
+    });
+  });
+
+  it("reloads and replays the stored winner after an insert race", async () => {
+    const { rows, dependencies } = makeDependencies();
+    const winner = storedRow({
+      id: "66666666-6666-4666-8666-666666666666",
+      response_json: JSON.stringify(
+        storedResponse({ uploadId: "66666666-6666-4666-8666-666666666666" })
+      ),
+    });
+    (dependencies.insertGrant as jest.Mock).mockImplementationOnce(async () => {
+      rows.push(winner);
+      throw Object.assign(new Error("duplicate"), { code: "23505" });
+    });
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    const result = await issuer.issue(VALID_INPUT);
+
+    expect(result).toEqual({
+      response: storedResponse({
+        uploadId: "66666666-6666-4666-8666-666666666666",
+      }),
+      replayed: true,
+    });
+  });
+
+  it("returns 422 when an insert race exposes changed key content", async () => {
+    const { rows, dependencies } = makeDependencies();
+    const changed = { ...VALID_BODY, sizeBytes: 4097 };
+    (dependencies.insertGrant as jest.Mock).mockImplementationOnce(async () => {
+      rows.push(
+        storedRow({
+          upload_attempt_id: "77777777-7777-4777-8777-777777777777",
+          request_hash: hashUploadGrantRequest(changed),
+        })
+      );
+      throw Object.assign(new Error("duplicate"), { code: "23505" });
+    });
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(issuer.issue(VALID_INPUT)).rejects.toMatchObject({
+      statusCode: 422,
+      errorCode: "idempotency_key_reused",
+    });
+  });
+
+  it("returns 409 when an insert race exposes changed attempt content", async () => {
+    const { rows, dependencies } = makeDependencies();
+    const changed = { ...VALID_BODY, sizeBytes: 4097 };
+    (dependencies.insertGrant as jest.Mock).mockImplementationOnce(async () => {
+      rows.push(
+        storedRow({
+          idempotency_key: "grant-key-0002",
+          request_hash: hashUploadGrantRequest(changed),
+        })
+      );
+      throw Object.assign(new Error("duplicate"), { code: "23505" });
+    });
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(issuer.issue(VALID_INPUT)).rejects.toMatchObject({
+      statusCode: 409,
+      errorCode: "upload_attempt_conflict",
+    });
+  });
+
+  it("does not mask non-unique database failures", async () => {
+    const { dependencies } = makeDependencies();
+    const databaseFailure = new Error("database unavailable");
+    (dependencies.insertGrant as jest.Mock).mockRejectedValueOnce(databaseFailure);
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(issuer.issue(VALID_INPUT)).rejects.toBe(databaseFailure);
+  });
+
+  it("maps storage failures without exposing provider details", async () => {
+    const { dependencies } = makeDependencies();
+    (dependencies.signUpload as jest.Mock).mockRejectedValueOnce(
+      new Error(
+        `provider failed for ${SIGNED_UPLOAD.bucket} ${SIGNED_UPLOAD.key} ${VALID_BODY.checksumSha256}`
+      )
+    );
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(issuer.issue(VALID_INPUT)).rejects.toMatchObject({
+      statusCode: 503,
+      errorCode: "storage_unavailable",
+      message: "storage_unavailable",
+    });
+  });
+
+  it("rejects a corrupt stored response without leaking parser details", async () => {
+    const { dependencies } = makeDependencies([
+      storedRow({ response_json: "not-json-private-storage-key" }),
+    ]);
+    const issuer = createUploadGrantIssuer(dependencies);
+
+    await expect(issuer.issue(VALID_INPUT)).rejects.toMatchObject({
+      statusCode: 503,
+      errorCode: "storage_unavailable",
+      message: "storage_unavailable",
+    });
   });
 });
