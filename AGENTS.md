@@ -5,6 +5,21 @@
 >
 > **Interview prep:** [`career/interview-prep/INTERVIEW_PREP.md`](career/interview-prep/INTERVIEW_PREP.md) — session handoff, CREO starter, coverage status, live E2E notes. Index: [`career/interview-prep/README.md`](career/interview-prep/README.md). All resume/career material now lives under `career/`.
 
+## Agent operating contract — locked
+
+Applies to every coding agent and IDE, including Codex, Cursor, and Kiro.
+
+### Start gate
+
+1. Read this file before taking action.
+2. For engineering work, follow the complete interface in `docs/agents/workflow.md` before exploring, editing, reviewing, or claiming completion.
+3. Let that workflow disclose the domain, decision, skill, issue-tracker, and evaluation references required by the current stage.
+4. Page the user at the current gate when a required skill remains missing after local discovery; the user alone authorizes internet access, installation, or a named fallback.
+
+### Change safety
+
+Preserve unrelated work. Keep changes inside the authorized task contract. Treat merge, push, deployment, infrastructure changes, database migrations, destructive actions, and external writes as separately authorized actions.
+
 [![CI](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml/badge.svg)](https://github.com/shubh209/Hearloop/actions/workflows/docker-image.yml)
 
 ---

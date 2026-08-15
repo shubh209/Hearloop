@@ -1,0 +1,147 @@
+- id: agent-harness-mode
+  statement: Guided mode is default; fast mode is explicit and task-scoped.
+  status: locked
+  authority: user
+  decided_at: 2026-08-15
+  scope:
+    applies_to:
+      - engineering task mode selection
+      - workflow start gate
+    excludes:
+      - changing the default to fast
+      - making fast persist across tasks
+  rationale:
+    - Guided mode keeps stages and human gates visible.
+    - Fast mode is an explicit, expiring exception.
+  evidence:
+    - docs/agents/workflow.md
+    - docs/superpowers/specs/2026-08-15-cross-agent-engineering-harness-design.md
+  reopen_when:
+    any:
+      - The user sets a persistent default mode for the repository.
+  requires_human_if:
+    - A task treats fast as the implicit default.
+    - A task keeps fast mode after the current task ends.
+
+- id: fast-mode-exact-match
+  statement: Fast mode auto-passes only locked decisions whose applies-to scope matches entirely and whose exclusions and reopening conditions do not match.
+  status: locked
+  authority: user
+  decided_at: 2026-08-15
+  scope:
+    applies_to:
+      - fast-mode human-gate auto-pass
+      - locked decision application
+    excludes:
+      - unresolved consequential assumptions
+      - scope expansions
+      - excluded decision surfaces
+  rationale:
+    - Fast mode must not convert ambiguity into permission.
+    - Exact-scope reuse avoids redundant approval without weakening exclusions.
+  evidence:
+    - docs/agents/workflow.md
+    - docs/superpowers/specs/2026-08-15-cross-agent-engineering-harness-design.md
+  reopen_when:
+    any:
+      - The user authorizes a broader auto-pass rule.
+  requires_human_if:
+    - Any exact-decision algorithm condition fails or is ambiguous.
+    - The change touches a listed exclusion.
+
+- id: missing-skill-human-page
+  statement: A locally undiscoverable required skill pages the user before internet access, installation, fallback, or later-stage work.
+  status: locked
+  authority: user
+  decided_at: 2026-08-15
+  scope:
+    applies_to:
+      - skill routing
+      - missing-skill gate
+    excludes:
+      - user-authorized named fallback for the current task
+      - user-authorized internet access
+  rationale:
+    - Silent substitution hides process variance.
+    - Internet and installation are separately authorized actions.
+  evidence:
+    - docs/agents/workflow.md
+    - AGENTS.md
+  reopen_when:
+    any:
+      - The user makes a named fallback persistent.
+  requires_human_if:
+    - A required skill remains missing after local directory search.
+
+- id: professional-checkpoints
+  statement: Teaching appears at stage transitions only unless the user asks for inline explanation.
+  status: locked
+  authority: user
+  decided_at: 2026-08-15
+  scope:
+    applies_to:
+      - stage transitions
+      - professional checkpoint emission
+    excludes:
+      - user-requested inline teaching during a stage
+  rationale:
+    - Continuous tutorial narration distracts from implementation.
+    - Stage boundaries are where experienced teams already pause.
+  evidence:
+    - docs/agents/workflow.md
+  reopen_when:
+    any:
+      - The user requests a different teaching cadence.
+  requires_human_if:
+    - A task wants to change the checkpoint format or teaching policy.
+
+- id: github-issues-only
+  statement: GitHub Issues is the repository's only issue tracker; pull requests are not a request surface.
+  status: locked
+  authority: user
+  decided_at: 2026-08-15
+  scope:
+    applies_to:
+      - issue tracking
+      - triage routing
+    excludes:
+      - pull-request review of already-authorized work
+      - unauthorized issue creation during a task that forbids external writes
+  rationale:
+    - One tracker keeps task contracts and evidence in one place.
+    - Pull requests record review, not intake.
+  evidence:
+    - docs/agents/issue-tracker.md
+    - docs/agents/workflow.md
+  reopen_when:
+    any:
+      - The user selects a different tracker.
+  requires_human_if:
+    - A task would create issues, labels, or tracker writes without authorization.
+
+- id: media-upload-protocol-rollout
+  statement: New Sessions remain legacy-v0 until capture clients support versioned grants.
+  status: locked
+  authority: user
+  decided_at: 2026-08-15
+  scope:
+    applies_to:
+      - upload-grant issuance
+      - Session creation defaults
+    excludes:
+      - finalize pinning
+      - worker migration
+  rationale:
+    - Existing capture clients use the legacy contract.
+    - Premature versioned-v1 rollout would break uploads.
+  evidence:
+    - apps/web/components/Recorder.tsx
+    - apps/web/public/widget.js
+    - packages/react/src/api-client.ts
+  reopen_when:
+    any:
+      - All capture clients support the versioned contract.
+      - An approved rollout plan replaces this decision.
+  requires_human_if:
+    - A task changes Session creation defaults away from legacy-v0.
+    - A task expands versioned-v1 beyond the approved routes.
