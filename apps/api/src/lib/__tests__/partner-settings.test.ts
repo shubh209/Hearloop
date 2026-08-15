@@ -4,18 +4,16 @@ import {
 } from "../partner-settings";
 
 describe("validatePartnerSettingsInput", () => {
-  it("accepts a public webhook, website, and comma-separated origins", () => {
+  it("accepts a public webhook, business context, and comma-separated origins", () => {
     expect(
       validatePartnerSettingsInput({
         webhookUrl: " https://hooks.example.com/hearloop ",
-        websiteUrl: "https://www.jiffylube.com/",
         allowedOrigins: " https://a.example.com, https://b.example.com ",
         businessContext: "  Oil changes  ",
         businessContextSource: "manual",
       })
     ).toEqual({
       webhookUrl: "https://hooks.example.com/hearloop",
-      websiteUrl: "https://www.jiffylube.com/",
       allowedOrigins: "https://a.example.com,https://b.example.com",
       businessContext: "Oil changes",
       businessContextSource: "manual",
@@ -25,7 +23,6 @@ describe("validatePartnerSettingsInput", () => {
   it.each([
     ["webhookUrl", { webhookUrl: "https://127.0.0.1/hook" }],
     ["webhookUrl metadata", { webhookUrl: "https://169.254.169.254/latest" }],
-    ["websiteUrl", { websiteUrl: "https://10.0.0.1/" }],
   ])("rejects a private %s with ssrf_blocked", (_case, input) => {
     expect(() => validatePartnerSettingsInput(input)).toThrow(
       PartnerSettingsValidationError
@@ -50,20 +47,35 @@ describe("validatePartnerSettingsInput", () => {
     ).toThrow(/invalid origin: "not-an-origin"/);
   });
 
-  it("clears optional URL fields when blank", () => {
+  it("clears optional settings when blank", () => {
     expect(
       validatePartnerSettingsInput({
         webhookUrl: null,
-        websiteUrl: "  ",
         allowedOrigins: null,
         businessContext: null,
       })
     ).toEqual({
       webhookUrl: null,
-      websiteUrl: null,
       allowedOrigins: null,
       businessContext: null,
     });
+  });
+
+  it.each(["import", "import_edited"])(
+    "rejects retired business context source %s",
+    (businessContextSource) => {
+      expect(() =>
+        validatePartnerSettingsInput({ businessContextSource })
+      ).toThrow(PartnerSettingsValidationError);
+    }
+  );
+
+  it("ignores retired websiteUrl input", () => {
+    expect(
+      validatePartnerSettingsInput({
+        websiteUrl: "https://example.com",
+      } as never)
+    ).toEqual({});
   });
 
   it("ignores fields that were not sent", () => {

@@ -60,9 +60,9 @@ describe("getWaitingJobCounts", () => {
 
 describe("withQueue", () => {
   it("opens the named queue, runs the callback, then closes", async () => {
-    const result = await withQueue("import-business-context", async (queue) => {
+    const result = await withQueue("validate-recording", async (queue) => {
       expect((queue as { name: string }).name).toBe(
-        QUEUE_NAMES["import-business-context"]
+        QUEUE_NAMES["validate-recording"]
       );
       return "ok";
     });

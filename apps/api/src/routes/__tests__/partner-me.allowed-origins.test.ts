@@ -80,4 +80,32 @@ describe('PATCH /partners/me/settings → GET /public/session/:token round trip 
     // handler will read back out of the DB for this partner's sessions.
     expect(parseAllowedOrigins(storedValue)).toEqual(inputOrigins);
   });
+
+  it('does not expose retired website import metadata in the Partner profile', async () => {
+    const { app, handlers } = makeApp();
+    await partnerMeRoutes(app);
+    const reply = makeReply();
+
+    await handlers['GET /partners/me'](
+      {
+        partner: {
+          id: 'partner-1',
+          name: 'QuickLube',
+          businessContext: 'Oil changes',
+          websiteUrl: 'https://legacy.example.com',
+          businessContextSource: 'import',
+          allowedOrigins: 'https://quicklube.example.com',
+          webhookUrl: null,
+        },
+      },
+      reply
+    );
+
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({ businessContext: 'Oil changes' })
+    );
+    const profile = reply.send.mock.calls[0][0] as Record<string, unknown>;
+    expect(profile).not.toHaveProperty('websiteUrl');
+    expect(profile).not.toHaveProperty('businessContextSource');
+  });
 });

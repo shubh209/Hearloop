@@ -37,8 +37,6 @@ export async function partnerMeRoutes(app: FastifyInstance) {
         partnerId: partner.id,
         name: partner.name,
         businessContext: partner.businessContext,
-        websiteUrl: partner.websiteUrl,
-        businessContextSource: partner.businessContextSource,
         allowedOrigins: partner.allowedOrigins,
         webhookUrl: partner.webhookUrl,
         embedKeyPrefix: embedKey?.key_prefix ?? null,
@@ -79,9 +77,6 @@ export async function partnerMeRoutes(app: FastifyInstance) {
       }
       if (parsed.businessContext !== undefined) {
         updates["business_context"] = parsed.businessContext;
-      }
-      if (parsed.websiteUrl !== undefined) {
-        updates["website_url"] = parsed.websiteUrl;
       }
       if (parsed.businessContextSource !== undefined) {
         updates["business_context_source"] = parsed.businessContextSource;

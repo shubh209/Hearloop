@@ -6,8 +6,6 @@ import {
 export const BUSINESS_CONTEXT_SOURCES = [
   "manual",
   "template",
-  "import",
-  "import_edited",
 ] as const;
 
 export type BusinessContextSource = (typeof BUSINESS_CONTEXT_SOURCES)[number];
@@ -26,7 +24,6 @@ export interface PartnerSettingsInput {
   webhookUrl?: string | null;
   allowedOrigins?: string | null;
   businessContext?: string | null;
-  websiteUrl?: string | null;
   businessContextSource?: string | null;
 }
 
@@ -34,7 +31,6 @@ export interface PartnerSettingsUpdate {
   webhookUrl?: string | null;
   allowedOrigins?: string | null;
   businessContext?: string | null;
-  websiteUrl?: string | null;
   businessContextSource?: BusinessContextSource | null;
 }
 
@@ -88,13 +84,6 @@ export function validatePartnerSettingsInput(
     update.businessContext = body.businessContext
       ? body.businessContext.trim().slice(0, 500)
       : null;
-  }
-
-  if (body.websiteUrl !== undefined) {
-    update.websiteUrl =
-      body.websiteUrl && body.websiteUrl.trim()
-        ? requirePublicHttps(body.websiteUrl)
-        : null;
   }
 
   if (body.businessContextSource !== undefined) {
