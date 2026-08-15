@@ -12,7 +12,7 @@ COPY packages/db/package*.json ./packages/db/
 RUN npm install --workspace=apps/api --workspace=packages/db --ignore-scripts
 
 # --- prod-deps: install ONLY production deps for the final image ---
-# Omits devDependencies (babel, jest, ts-jest, etc.) that carry transitive CVEs
+# Omits devDependencies (Babel, Jest, etc.) that carry transitive CVEs
 # but are never used at runtime
 FROM base AS prod-deps
 COPY package*.json ./

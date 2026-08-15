@@ -6,12 +6,11 @@
     "build": "../../node_modules/.bin/tsc",
     "dev": "ts-node-dev --respawn src/index.ts",
     "start": "node dist/index.js",
-    "test": "node_modules/.bin/jest --runInBand",
-    "test:watch": "node_modules/.bin/jest --watch",
+    "test": "../../node_modules/.bin/jest --runInBand",
+    "test:watch": "../../node_modules/.bin/jest --watch",
     "eval:analysis": "DOTENV_CONFIG_PATH=../../.env ../../node_modules/ts-node-dev/node_modules/.bin/ts-node -r dotenv/config --transpile-only src/eval/run-analysis-eval.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1037.0",
     "@aws-sdk/client-cloudwatch": "3.1037.0",
     "@aws-sdk/client-s3": "^3.0.0",
@@ -34,11 +33,9 @@
     "@types/bcrypt": "^6.0.0",
     "@types/jest": "^29.5.14",
     "@types/pg": "^8.0.0",
-    "@types/pino": "^7.0.4",
     "babel-jest": "^29.7.0",
     "fast-check": "^3.23.2",
     "jest": "^29.7.0",
-    "ts-jest": "^29.4.11",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.0.0"
   }

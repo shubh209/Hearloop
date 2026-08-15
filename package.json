@@ -15,7 +15,6 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@jridgewell/trace-mapping": "^0.3.31",
     "dotenv": "^17.4.2"
   }
 }
