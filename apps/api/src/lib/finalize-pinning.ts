@@ -258,7 +258,7 @@ function isPostgresUniqueViolation(error: unknown): boolean {
 }
 
 function normalizeEtag(etag: string): string {
-  return etag.replaceAll('"', "");
+  return etag.replace(/"/g, "");
 }
 
 function parseStoredFinalizeResponse(

@@ -5,6 +5,16 @@
 
 ---
 
+## Finalize-time exact-version pinning (public + authenticated) — Aug 15, 2026
+
+- Metric: versioned finalize pin/replay/conflict/integrity contract; `legacy-v0` finalize regression; live S3 HEAD probe
+- Before: public and authenticated finalize ignored `upload_protocol`; no `finalize_receipts` writes; Recording version columns unused; grant issuance existed but finalize could not pin a VersionId
+- After: mocked suites green — `finalize-pinning.test.ts` 40 passed; `sessions.test.ts` 16 passed; `public.test.ts` 19 passed; live suite skipped by default. Live probe with `RUN_LIVE_S3_STORAGE_CONTRACT=1` against `hearloop-audio-prod`: checksum-bound PUT succeeded; exact-version HEAD returned 403 for `hearloop-s3-user`; `DeleteObjectVersion` and `ListBucketVersions` also 403. Probe objects may remain under prefix `phase1-finalize-probe/`. Production Session default remains `legacy-v0` (not flipped).
+- Delta: finalize pin contract implemented in branch; no production `versioned-v1` Sessions
+- How measured: `cd apps/api && ../../node_modules/.bin/jest --runInBand src/lib/__tests__/finalize-pinning.test.ts src/lib/__tests__/finalize-pinning.live.test.ts src/lib/__tests__/upload-grants.test.ts src/lib/__tests__/storage.test.ts src/routes/__tests__/sessions.test.ts src/routes/__tests__/public.test.ts`; live: `DOTENV_CONFIG_PATH=../../.env RUN_LIVE_S3_STORAGE_CONTRACT=1 node -r dotenv/config ../../node_modules/.bin/jest --runInBand src/lib/__tests__/finalize-pinning.live.test.ts`
+
+---
+
 ## Apply migration 011 media evidence pinning (release gate) — Aug 15, 2026
 
 - Metric: production schema objects for media evidence pinning; S3 versioning; existing Session protocol
