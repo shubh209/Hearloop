@@ -8,12 +8,19 @@
 const mockExecuteTakeFirst = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
+const mockPinVersionedFinalize = jest.fn();
 jest.mock('../../lib/db', () => ({
   db: {
     selectFrom: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    insertInto: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    onConflict: jest.fn().mockReturnThis(),
+    updateTable: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue([]),
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
   },
 }));
@@ -29,6 +36,12 @@ jest.mock('../../lib/upload-grants', () => ({
     mockIssueVersionedUploadGrant(...args),
 }));
 
+jest.mock('../../lib/finalize-pinning', () => ({
+  ...jest.requireActual('../../lib/finalize-pinning'),
+  pinVersionedFinalize: (...args: unknown[]) =>
+    mockPinVersionedFinalize(...args),
+}));
+
 jest.mock('../../lib/queue', () => ({
   enqueueValidate: jest.fn(),
 }));
@@ -39,6 +52,7 @@ jest.mock('../../lib/logger', () => ({
 
 import { publicRoutes } from '../public';
 import { UploadGrantError } from '../../lib/upload-grants';
+import { FinalizePinError } from '../../lib/finalize-pinning';
 
 // Build a minimal Fastify-like mock that captures registered route handlers.
 function makeApp() {
@@ -358,5 +372,151 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     );
 
     expect(reply.code).toHaveBeenCalledWith(400);
+  });
+});
+
+describe('POST /public/session/:token/finalize — protocol dispatch', () => {
+  const pinBody = {
+    uploadId: '55555555-5555-4555-8555-555555555555',
+    versionId: 's3-version-abc',
+    etag: '"etag-1"',
+  };
+  const openedVersioned = {
+    id: 'session-1',
+    partner_id: 'partner-1',
+    status: 'opened',
+    expires_at: new Date(Date.now() + 60_000),
+    max_duration_sec: 5,
+    upload_protocol: 'versioned-v1',
+  };
+
+  beforeEach(() => {
+    mockExecuteTakeFirst.mockReset();
+    mockPinVersionedFinalize.mockReset();
+  });
+
+  it('pins a versioned Session from the token-resolved Partner and Session', async () => {
+    mockExecuteTakeFirst.mockResolvedValue(openedVersioned);
+    mockPinVersionedFinalize.mockResolvedValue({
+      response: { sessionId: 'session-1', status: 'submitted' },
+      responseStatus: 200,
+      replayed: false,
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).toHaveBeenCalledWith({
+      partnerId: 'partner-1',
+      sessionId: 'session-1',
+      maxDurationSec: 5,
+      idempotencyKey: 'final-key-0001',
+      body: pinBody,
+    });
+    expect(reply.code).toHaveBeenCalledWith(200);
+    expect(reply.send).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      status: 'submitted',
+    });
+  });
+
+  it('sets Idempotent-Replayed on a versioned replay', async () => {
+    mockExecuteTakeFirst.mockResolvedValue(openedVersioned);
+    mockPinVersionedFinalize.mockResolvedValue({
+      response: { sessionId: 'session-1', status: 'submitted' },
+      responseStatus: 200,
+      replayed: true,
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(reply.header).toHaveBeenCalledWith('Idempotent-Replayed', 'true');
+  });
+
+  it('maps FinalizePinError status and code', async () => {
+    mockExecuteTakeFirst.mockResolvedValue(openedVersioned);
+    mockPinVersionedFinalize.mockRejectedValue(
+      new FinalizePinError(422, 'integrity_mismatch')
+    );
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(422);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'integrity_mismatch' });
+  });
+
+  it('does not pin when extra JSON appears on a legacy-v0 Session', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      ...openedVersioned,
+      upload_protocol: 'legacy-v0',
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/session-1/audio.webm',
+          mimeType: 'audio/webm',
+          uploadId: pinBody.uploadId,
+        },
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
+  });
+
+  it('does not pin an expired Session', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      ...openedVersioned,
+      expires_at: new Date(0),
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
+    expect(reply.code).toHaveBeenCalledWith(410);
   });
 });
