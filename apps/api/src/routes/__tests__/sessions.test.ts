@@ -6,12 +6,19 @@
 const mockExecuteTakeFirst = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
+const mockPinVersionedFinalize = jest.fn();
 jest.mock('../../lib/db', () => ({
   db: {
     selectFrom: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     selectAll: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    insertInto: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    onConflict: jest.fn().mockReturnThis(),
+    updateTable: jest.fn().mockReturnThis(),
+    set: jest.fn().mockReturnThis(),
+    execute: jest.fn().mockResolvedValue([]),
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
   },
 }));
@@ -28,6 +35,12 @@ jest.mock('../../lib/upload-grants', () => ({
     mockIssueVersionedUploadGrant(...args),
 }));
 
+jest.mock('../../lib/finalize-pinning', () => ({
+  ...jest.requireActual('../../lib/finalize-pinning'),
+  pinVersionedFinalize: (...args: unknown[]) =>
+    mockPinVersionedFinalize(...args),
+}));
+
 jest.mock('../../lib/queue', () => ({
   enqueueValidate: jest.fn(),
   enqueueExpireSession: jest.fn(),
@@ -35,6 +48,7 @@ jest.mock('../../lib/queue', () => ({
 
 import { sessionRoutes } from '../sessions';
 import { UploadGrantError } from '../../lib/upload-grants';
+import { FinalizePinError } from '../../lib/finalize-pinning';
 
 const VALID_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -277,5 +291,176 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     );
 
     expect(reply.code).toHaveBeenCalledWith(400);
+  });
+});
+
+describe('POST /sessions/:id/finalize — protocol dispatch', () => {
+  const pinBody = {
+    uploadId: '55555555-5555-4555-8555-555555555555',
+    versionId: 's3-version-abc',
+    etag: '"etag-1"',
+  };
+
+  beforeEach(() => {
+    mockExecuteTakeFirst.mockReset();
+    mockPinVersionedFinalize.mockReset();
+  });
+
+  it('pins a versioned Session from trusted Partner and Session identity', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      upload_protocol: 'versioned-v1',
+      max_duration_sec: 5,
+    });
+    mockPinVersionedFinalize.mockResolvedValue({
+      response: { sessionId: VALID_ID, status: 'submitted' },
+      responseStatus: 200,
+      replayed: false,
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).toHaveBeenCalledWith({
+      partnerId: 'partner-1',
+      sessionId: VALID_ID,
+      maxDurationSec: 5,
+      idempotencyKey: 'final-key-0001',
+      body: pinBody,
+    });
+    expect(reply.code).toHaveBeenCalledWith(200);
+    expect(reply.send).toHaveBeenCalledWith({
+      sessionId: VALID_ID,
+      status: 'submitted',
+    });
+    expect(reply.header).not.toHaveBeenCalled();
+  });
+
+  it('sets Idempotent-Replayed on a versioned replay', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      upload_protocol: 'versioned-v1',
+      max_duration_sec: 5,
+    });
+    mockPinVersionedFinalize.mockResolvedValue({
+      response: { sessionId: VALID_ID, status: 'submitted' },
+      responseStatus: 200,
+      replayed: true,
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(reply.header).toHaveBeenCalledWith('Idempotent-Replayed', 'true');
+  });
+
+  it('maps FinalizePinError status and code', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      upload_protocol: 'versioned-v1',
+      max_duration_sec: 5,
+    });
+    mockPinVersionedFinalize.mockRejectedValue(
+      new FinalizePinError(422, 'integrity_mismatch')
+    );
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(422);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'integrity_mismatch' });
+  });
+
+  it('does not pin when extra JSON appears on a legacy-v0 Session', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      upload_protocol: 'legacy-v0',
+      max_duration_sec: 5,
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        body: {
+          storageKey: `recordings/${VALID_ID}/audio.webm`,
+          mimeType: 'audio/webm',
+          uploadId: pinBody.uploadId,
+        },
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
+  });
+
+  it('does not pin an already submitted Session', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'submitted',
+      upload_protocol: 'versioned-v1',
+      max_duration_sec: 5,
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
+    expect(reply.send).toHaveBeenCalledWith({
+      sessionId: VALID_ID,
+      status: 'submitted',
+    });
   });
 });

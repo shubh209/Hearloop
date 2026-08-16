@@ -9,6 +9,10 @@ import {
   issueVersionedUploadGrant,
   UploadGrantError,
 } from "../lib/upload-grants";
+import {
+  pinVersionedFinalize,
+  FinalizePinError,
+} from "../lib/finalize-pinning";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -286,6 +290,29 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
+      }
+
+      if (session.upload_protocol === "versioned-v1") {
+        try {
+          const result = await pinVersionedFinalize({
+            partnerId: partner.id,
+            sessionId: id,
+            maxDurationSec: session.max_duration_sec,
+            idempotencyKey: req.headers["idempotency-key"],
+            body: req.body,
+          });
+          if (result.replayed) {
+            reply.header("Idempotent-Replayed", "true");
+          }
+          return reply.code(result.responseStatus).send(result.response);
+        } catch (error) {
+          if (error instanceof FinalizePinError) {
+            return reply
+              .code(error.statusCode)
+              .send({ error: error.errorCode });
+          }
+          throw error;
+        }
       }
 
       if (
