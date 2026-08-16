@@ -88,6 +88,10 @@ function makeLiveDeps(grant: FinalizeGrantRow): {
         verification_lease_until: row.verification_lease_until,
       });
     },
+    renewVerifyingLease: async (id, _token, until) => {
+      const row = receipts.find((candidate) => candidate.id === id);
+      if (row) row.verification_lease_until = until;
+    },
     completeReceipt: async (id, responseStatus, responseJson) => {
       const row = receipts.find((candidate) => candidate.id === id);
       if (row) {

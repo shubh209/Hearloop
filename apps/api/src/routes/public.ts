@@ -378,16 +378,14 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(410).send({ error: "session_expired" });
       }
 
-      // Idempotent: already submitted
-      if (session.status === "submitted" || session.status === "processing") {
-        return reply.send({ sessionId: session.id, status: session.status });
-      }
-
-      if (!["opened", "recording", "uploaded"].includes(session.status)) {
-        return reply.code(409).send({ error: "invalid_session_state" });
-      }
-
       if (session.upload_protocol === "versioned-v1") {
+        if (
+          !["opened", "recording", "uploaded", "submitted", "processing"].includes(
+            session.status
+          )
+        ) {
+          return reply.code(409).send({ error: "invalid_session_state" });
+        }
         try {
           const result = await pinVersionedFinalize({
             partnerId: session.partner_id,
@@ -408,6 +406,11 @@ export async function publicRoutes(app: FastifyInstance) {
           }
           throw error;
         }
+      }
+
+      // Idempotent: already submitted
+      if (session.status === "submitted" || session.status === "processing") {
+        return reply.send({ sessionId: session.id, status: session.status });
       }
 
       if (

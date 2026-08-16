@@ -283,16 +283,14 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: "session_not_found" });
       }
 
-      if (session.status === "submitted" || session.status === "processing") {
-        // Idempotent — already submitted
-        return reply.send({ sessionId: id, status: session.status });
-      }
-
-      if (!["opened", "recording", "uploaded"].includes(session.status)) {
-        return reply.code(409).send({ error: "invalid_session_state" });
-      }
-
       if (session.upload_protocol === "versioned-v1") {
+        if (
+          !["opened", "recording", "uploaded", "submitted", "processing"].includes(
+            session.status
+          )
+        ) {
+          return reply.code(409).send({ error: "invalid_session_state" });
+        }
         try {
           const result = await pinVersionedFinalize({
             partnerId: partner.id,
@@ -313,6 +311,15 @@ export async function sessionRoutes(app: FastifyInstance) {
           }
           throw error;
         }
+      }
+
+      if (session.status === "submitted" || session.status === "processing") {
+        // Idempotent — already submitted
+        return reply.send({ sessionId: id, status: session.status });
+      }
+
+      if (!["opened", "recording", "uploaded"].includes(session.status)) {
+        return reply.code(409).send({ error: "invalid_session_state" });
       }
 
       if (

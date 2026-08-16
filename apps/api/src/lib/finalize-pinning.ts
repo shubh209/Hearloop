@@ -206,6 +206,11 @@ export interface FinalizePinDependencies {
     verification_lease_token: string;
     verification_lease_until: Date;
   }): Promise<void>;
+  renewVerifyingLease(
+    id: string,
+    verificationLeaseToken: string,
+    verificationLeaseUntil: Date
+  ): Promise<void>;
   completeReceipt(
     id: string,
     responseStatus: number,
@@ -225,6 +230,9 @@ export interface FinalizePinDependencies {
     durationMs: number | null;
     recordingId: string;
     pinnedAt: Date;
+    receiptId: string;
+    responseStatus: number;
+    responseJson: string;
   }): Promise<void>;
   headVersion(ref: StorageVersionRef): Promise<VersionedObjectMetadata>;
   enqueueValidate(payload: {
@@ -345,10 +353,12 @@ export function createFinalizePinner(dependencies: FinalizePinDependencies): {
         idempotencyKey
       );
       let receiptId: string | undefined;
+      let renewLease = false;
       if (existing) {
         const outcome = applyExistingReceipt(existing, requestHash, now);
         if (outcome !== "takeover") return outcome;
         receiptId = existing.id;
+        renewLease = true;
       }
 
       const grant = await dependencies.findGrant(
@@ -397,7 +407,16 @@ export function createFinalizePinner(dependencies: FinalizePinDependencies): {
           const outcome = applyExistingReceipt(winner, requestHash, now);
           if (outcome !== "takeover") return outcome;
           receiptId = winner.id;
+          renewLease = true;
         }
+      }
+
+      if (renewLease) {
+        await dependencies.renewVerifyingLease(
+          receiptId,
+          dependencies.createId(),
+          new Date(now.getTime() + LEASE_MS)
+        );
       }
 
       let metadata: VersionedObjectMetadata;
@@ -427,6 +446,9 @@ export function createFinalizePinner(dependencies: FinalizePinDependencies): {
         durationMs: request.durationMs,
         recordingId: recording?.id ?? dependencies.createId(),
         pinnedAt: now,
+        receiptId,
+        responseStatus: 200,
+        responseJson: successJson,
       });
       await dependencies.completeReceipt(receiptId, 200, successJson);
       await dependencies.enqueueValidate({
@@ -492,6 +514,18 @@ const productionPinner = createFinalizePinner({
       })
       .execute();
   },
+  async renewVerifyingLease(id, verificationLeaseToken, verificationLeaseUntil) {
+    await db
+      .updateTable("finalize_receipts")
+      .set({
+        status: "verifying",
+        verification_lease_token: verificationLeaseToken,
+        verification_lease_until: verificationLeaseUntil,
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .execute();
+  },
   async completeReceipt(id, responseStatus, responseJson) {
     await db
       .updateTable("finalize_receipts")
@@ -532,6 +566,9 @@ const productionPinner = createFinalizePinner({
     durationMs,
     recordingId,
     pinnedAt,
+    receiptId,
+    responseStatus,
+    responseJson,
   }) {
     await db.transaction().execute(async (trx) => {
       await trx
@@ -585,6 +622,19 @@ const productionPinner = createFinalizePinner({
         .updateTable("sessions")
         .set({ status: "submitted", updated_at: pinnedAt })
         .where("id", "=", sessionId)
+        .execute();
+
+      await trx
+        .updateTable("finalize_receipts")
+        .set({
+          status: "completed",
+          response_status: responseStatus,
+          response_json: responseJson,
+          verification_lease_token: null,
+          verification_lease_until: null,
+          updated_at: pinnedAt,
+        })
+        .where("id", "=", receiptId)
         .execute();
     });
   },

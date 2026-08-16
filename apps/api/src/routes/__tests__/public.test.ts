@@ -519,4 +519,31 @@ describe('POST /public/session/:token/finalize — protocol dispatch', () => {
     expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
     expect(reply.code).toHaveBeenCalledWith(410);
   });
+
+  it('replays a submitted versioned Session through the pin module', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      ...openedVersioned,
+      status: 'submitted',
+    });
+    mockPinVersionedFinalize.mockResolvedValue({
+      response: { sessionId: 'session-1', status: 'submitted' },
+      responseStatus: 200,
+      replayed: true,
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        headers: { 'idempotency-key': 'final-key-0001' },
+        body: pinBody,
+      },
+      reply
+    );
+
+    expect(mockPinVersionedFinalize).toHaveBeenCalled();
+    expect(reply.header).toHaveBeenCalledWith('Idempotent-Replayed', 'true');
+  });
 });

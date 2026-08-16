@@ -269,6 +269,13 @@ function makeDependencies(options?: {
         verification_lease_until: row.verification_lease_until,
       });
     }),
+    renewVerifyingLease: jest.fn(async (id, _token, until) => {
+      const row = receipts.find((candidate) => candidate.id === id);
+      if (row) {
+        row.status = "verifying";
+        row.verification_lease_until = until;
+      }
+    }),
     completeReceipt: jest.fn(async (id, responseStatus, responseJson) => {
       const row = receipts.find((candidate) => candidate.id === id);
       if (row) {
@@ -411,6 +418,11 @@ describe("createFinalizePinner", () => {
       responseStatus: 200,
     });
     expect(dependencies.insertVerifyingReceipt).not.toHaveBeenCalled();
+    expect(dependencies.renewVerifyingLease).toHaveBeenCalledWith(
+      "stale-receipt",
+      "generated-id",
+      new Date(NOW.getTime() + 30_000)
+    );
     expect(persistCalls).toHaveLength(1);
     expect(dependencies.completeReceipt).toHaveBeenCalledWith(
       "stale-receipt",

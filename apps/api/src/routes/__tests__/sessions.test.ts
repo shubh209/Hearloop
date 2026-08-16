@@ -435,13 +435,18 @@ describe('POST /sessions/:id/finalize — protocol dispatch', () => {
     expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
   });
 
-  it('does not pin an already submitted Session', async () => {
+  it('replays a submitted versioned Session through the pin module', async () => {
     mockExecuteTakeFirst.mockResolvedValue({
       id: VALID_ID,
       partner_id: 'partner-1',
       status: 'submitted',
       upload_protocol: 'versioned-v1',
       max_duration_sec: 5,
+    });
+    mockPinVersionedFinalize.mockResolvedValue({
+      response: { sessionId: VALID_ID, status: 'submitted' },
+      responseStatus: 200,
+      replayed: true,
     });
     const { app, handlers } = makeApp();
     await sessionRoutes(app);
@@ -457,10 +462,7 @@ describe('POST /sessions/:id/finalize — protocol dispatch', () => {
       reply
     );
 
-    expect(mockPinVersionedFinalize).not.toHaveBeenCalled();
-    expect(reply.send).toHaveBeenCalledWith({
-      sessionId: VALID_ID,
-      status: 'submitted',
-    });
+    expect(mockPinVersionedFinalize).toHaveBeenCalled();
+    expect(reply.header).toHaveBeenCalledWith('Idempotent-Replayed', 'true');
   });
 });
