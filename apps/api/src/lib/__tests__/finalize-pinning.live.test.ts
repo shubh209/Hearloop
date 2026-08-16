@@ -15,9 +15,8 @@ import {
 const RUN_LIVE = process.env.RUN_LIVE_S3_STORAGE_CONTRACT === "1";
 const describeLive = RUN_LIVE ? describe : describe.skip;
 
-// Live probe requires the runtime IAM user to PutObject (via presign),
-// HeadObject with VersionId, and DeleteObjectVersion. hearloop-s3-user can
-// PUT; HEAD/DELETE of versions returned 403 on 2026-08-15.
+// Live probe uses prefix phase1-finalize-probe/, which ProgrammaticAccess v3
+// allows for ListBucketVersions, GetObjectVersion, and DeleteObjectVersion.
 
 const bucket = process.env.STORAGE_BUCKET!;
 

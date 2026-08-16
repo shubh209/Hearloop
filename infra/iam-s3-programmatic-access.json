@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::hearloop-audio-prod/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::hearloop-audio-prod"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketVersioning", "s3:GetBucketCORS"],
+      "Resource": "arn:aws:s3:::hearloop-audio-prod"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucketVersions",
+      "Resource": "arn:aws:s3:::hearloop-audio-prod",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "recordings/*",
+            "phase1-capability-probe/*",
+            "phase1-finalize-probe/*"
+          ]
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObjectVersion", "s3:DeleteObjectVersion"],
+      "Resource": [
+        "arn:aws:s3:::hearloop-audio-prod/recordings/*",
+        "arn:aws:s3:::hearloop-audio-prod/phase1-capability-probe/*",
+        "arn:aws:s3:::hearloop-audio-prod/phase1-finalize-probe/*"
+      ]
+    }
+  ]
+}
