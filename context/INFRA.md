@@ -35,8 +35,9 @@ Last updated: August 15, 2026
   remain legacy null-version objects.
 - CORS retains the widget-compatible origin policy and exposes `ETag`,
   `x-amz-version-id`, and `x-amz-checksum-sha256`.
-- Application access includes version inspection, exact-version reads, and
-  exact-version deletion under the recording prefixes.
+- Application access (`hearloop-s3-user` / `ProgrammaticAccess` v3) includes
+  version inspection, exact-version reads, and exact-version deletion under
+  `recordings/*`, `phase1-capability-probe/*`, and `phase1-finalize-probe/*`.
 - No automatic noncurrent-version lifecycle deletion is configured.
 - The August 14 capability probe verified distinct VersionIds, exact-version
   HEAD/GET integrity, browser-visible headers, scoped listing, and exact cleanup.

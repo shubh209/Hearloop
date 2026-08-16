@@ -7,16 +7,16 @@ in Git and measured outcomes remain in `context/METRICS.md`.
 
 ## P1 — Complete media evidence pinning
 
-The schema, version-aware storage primitives, and idempotent upload-grant
-issuance are implemented. New Sessions remain `legacy-v0` until capture clients
-support the versioned contract.
+The schema, version-aware storage primitives, idempotent upload-grant
+issuance, and finalize-time exact-version pinning are implemented on
+`feat/finalize-version-pinning`. New Sessions remain `legacy-v0` until capture
+clients support the versioned contract. This is not production `versioned-v1`
+traffic.
 
-1. Implement finalize-time exact-version pinning for public and authenticated
-   routes, including idempotency and integrity checks.
-2. Make validation and transcription workers read the pinned S3 VersionId.
-3. Make Session deletion and expiry delete exact versions; add scoped cleanup
+1. Make validation and transcription workers read the pinned S3 VersionId.
+2. Make Session deletion and expiry delete exact versions; add scoped cleanup
    for abandoned, unpinned upload versions.
-4. Add telemetry, rollout, rollback, and legacy-Session verification.
+3. Add telemetry, rollout, rollback, and legacy-Session verification.
 
 See `context/research/hearloop-platform-design-roadmap.best-effort-73.5.md` and
 the media-pinning design/plan documents under `docs/superpowers/`.

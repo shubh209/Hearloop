@@ -16,6 +16,10 @@ import {
   issueVersionedUploadGrant,
   UploadGrantError,
 } from "../lib/upload-grants";
+import {
+  pinVersionedFinalize,
+  FinalizePinError,
+} from "../lib/finalize-pinning";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -355,7 +359,14 @@ export async function publicRoutes(app: FastifyInstance) {
 
       const session = await db
         .selectFrom("sessions")
-        .select(["id", "partner_id", "status", "expires_at", "max_duration_sec"])
+        .select([
+          "id",
+          "partner_id",
+          "status",
+          "expires_at",
+          "max_duration_sec",
+          "upload_protocol",
+        ])
         .where("public_token", "=", token)
         .executeTakeFirst();
 
@@ -367,13 +378,39 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(410).send({ error: "session_expired" });
       }
 
+      if (session.upload_protocol === "versioned-v1") {
+        if (
+          !["opened", "recording", "uploaded", "submitted", "processing"].includes(
+            session.status
+          )
+        ) {
+          return reply.code(409).send({ error: "invalid_session_state" });
+        }
+        try {
+          const result = await pinVersionedFinalize({
+            partnerId: session.partner_id,
+            sessionId: session.id,
+            maxDurationSec: session.max_duration_sec,
+            idempotencyKey: req.headers["idempotency-key"],
+            body: req.body,
+          });
+          if (result.replayed) {
+            reply.header("Idempotent-Replayed", "true");
+          }
+          return reply.code(result.responseStatus).send(result.response);
+        } catch (error) {
+          if (error instanceof FinalizePinError) {
+            return reply
+              .code(error.statusCode)
+              .send({ error: error.errorCode });
+          }
+          throw error;
+        }
+      }
+
       // Idempotent: already submitted
       if (session.status === "submitted" || session.status === "processing") {
         return reply.send({ sessionId: session.id, status: session.status });
-      }
-
-      if (!["opened", "recording", "uploaded"].includes(session.status)) {
-        return reply.code(409).send({ error: "invalid_session_state" });
       }
 
       if (
