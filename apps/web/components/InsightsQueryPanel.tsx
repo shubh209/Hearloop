@@ -226,10 +226,8 @@ export function InsightsQueryPanel() {
               {result.evidenceResultsUrl && (
                 <p style={{ margin: 0, color: "var(--ink-3)", fontSize: 12 }}>
                   <a href={result.evidenceResultsUrl} style={{ color: "var(--blue)" }}>
-                    {result.evidenceResultsUrl}
+                    Evidence list not built yet.
                   </a>
-                  {" · "}
-                  Evidence list not built yet.
                 </p>
               )}
             </>
