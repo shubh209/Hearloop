@@ -7,7 +7,7 @@
 
 ## Insights query slice 1 (builder demo) — Aug 18, 2026
 
-- Metric: Jest coverage for Insights query count path (new tests)
+- Metric: dedicated test case count for Insights query count path (new tests)
 - Before: 0 dedicated Insights query tests
 - After: 21 test cases across 6 files (`count-insights-sessions`, `insights-query-enabled`, `insights-query-stub-evidence-url`, `parse-insights-query`, `insights-query`, `partner-me.insights-query-flag`)
 - Delta: +21 test cases

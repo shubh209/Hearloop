@@ -7,6 +7,9 @@ const mockQuery: any = {
     whereCalls.push([String(col), op, val]);
     return mockQuery;
   }),
+  $if: jest.fn((cond: boolean, fn: (qb: typeof mockQuery) => typeof mockQuery) =>
+    cond ? fn(mockQuery) : mockQuery
+  ),
   executeTakeFirst: jest.fn().mockResolvedValue({ count: "0" }),
 };
 
