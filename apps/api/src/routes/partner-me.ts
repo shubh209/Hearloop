@@ -8,6 +8,7 @@ import {
   PartnerSettingsValidationError,
   validatePartnerSettingsInput,
 } from "../lib/partner-settings";
+import { isInsightsQueryEnabled } from "../lib/insights-query-enabled";
 
 export async function partnerMeRoutes(app: FastifyInstance) {
   const auth = [app.authenticatePartner];
@@ -42,6 +43,7 @@ export async function partnerMeRoutes(app: FastifyInstance) {
         embedKeyPrefix: embedKey?.key_prefix ?? null,
         hasSecretKey: !!secretKey,
         secretKeyPrefix: secretKey?.key_prefix ?? null,
+        insightsQueryEnabled: isInsightsQueryEnabled(),
       });
     }
   );
