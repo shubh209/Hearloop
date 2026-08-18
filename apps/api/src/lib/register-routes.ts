@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { captureLinkRoutes } from "../routes/capture-links";
 import { healthRoutes } from "../routes/health";
+import { insightsQueryRoutes } from "../routes/insights-query";
 import { partnerMeRoutes } from "../routes/partner-me";
 import { partnerRoutes } from "../routes/partners";
 import { publicRoutes } from "../routes/public";
@@ -11,6 +12,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(publicRoutes, { prefix: "/v1" });
   await app.register(partnerRoutes, { prefix: "/v1" });
   await app.register(partnerMeRoutes, { prefix: "/v1" });
+  await app.register(insightsQueryRoutes, { prefix: "/v1" });
   await app.register(captureLinkRoutes, { prefix: "/v1" });
   await app.register(healthRoutes);
 }
