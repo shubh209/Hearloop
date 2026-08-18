@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { EmbedSettingsPanel } from "../../components/EmbedSettingsPanel";
 import { ApiSettingsPanel } from "../../components/ApiSettingsPanel";
 import { CaptureLinksPanel } from "../../components/CaptureLinksPanel";
+import { InsightsQueryPanel } from "../../components/InsightsQueryPanel";
 
 // ── Display helpers ─────────────────────────────────────────
 const TOPIC_COLORS = ["#E24B4A", "#EF9F27", "#1D9E75", "#378ADD", "#888"];
@@ -768,6 +769,8 @@ export default function DashboardPage() {
                     </div>
                   ))}
                 </div>
+
+                <InsightsQueryPanel />
 
                 <div className="g2">
                   <div className="card">
