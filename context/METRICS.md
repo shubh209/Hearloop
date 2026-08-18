@@ -5,6 +5,17 @@
 
 ---
 
+## Insights query slice 1 (builder demo) — Aug 18, 2026
+
+- Metric: Jest coverage for Insights query count path (new tests)
+- Before: 0 dedicated Insights query tests
+- After: 21 test cases across 6 files (`count-insights-sessions`, `insights-query-enabled`, `insights-query-stub-evidence-url`, `parse-insights-query`, `insights-query`, `partner-me.insights-query-flag`)
+- Delta: +21 test cases
+- How measured: `cd apps/api && npm test -- --runInBand` — 240 passed, 2 failed (pre-existing `env.test.ts` happy-path gaps; not introduced by this slice), 1 skipped, 36/37 suites
+- Scope note: Portfolio/demo only. Does NOT measure Partner demand, production query p95, or Pipeline accuracy. Flag defaults off. Evidence URL is a stub.
+
+---
+
 ## Apply migration 011 media evidence pinning (release gate) — Aug 15, 2026
 
 - Metric: production schema objects for media evidence pinning; S3 versioning; existing Session protocol
