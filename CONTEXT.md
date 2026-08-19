@@ -41,6 +41,14 @@ _Avoid_: Workflow (generic)
 Structured output from analysis: transcript, sentiment, topics, urgency, flags — what the Partner receives.
 _Avoid_: Result (too vague)
 
+**Insights query**:
+A later Partner-only read path: a bounded question over that Partner's Sessions that returns a Cited answer. Not a write into Insights and not a replacement for the Pipeline. **v1 (BRD-01 Path A):** portfolio demonstration of cited retrieval + eval — not a validated Partner product launch.
+_Avoid_: Chatbot (too open), knowledge graph, feedback brain, RAG (implementation), Partner pilot (empty-corpus work is a **builder demo**, not a pilot)
+
+**Cited answer**:
+The Insights query reply: counts, lists, or short quotes, each tied to Session ids. If evidence is missing or the question is unbounded, there is no answer — a refusal.
+_Avoid_: Chat response, summary (uncited), recommendation (Hearloop does not prescribe ops)
+
 **Insights delivery**:
 How a Partner receives completed Session output. Three separate channels, all fed by the same Insights: **Dashboard** (Hearloop UI listing Sessions for that Partner, pull), **Webhook delivery** (HTTPS POST to Partner-configured URL, requires the Partner to run a receiving server), and **Urgent alert email** (SES email, push, fires only on negative-sentiment + urgent Sessions — the channel a non-technical Partner with no webhook receiver actually gets notified through).
 _Avoid_: Result (too vague)

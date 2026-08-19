@@ -1,0 +1,12 @@
+---
+description: Create Business Requirements Documents (BRD) — SDD Layer 1. Use when user says /brd, business requirements, or Layer 1 artifact before/alongside PRD.
+alwaysApply: false
+---
+
+# BRD skill
+
+Read and follow `.cursor/skills/brd/SKILL.md` completely before writing a BRD.
+
+Trigger: `/brd`, "write a BRD", "business requirements", "Layer 1".
+
+Output: `docs/BRD/BRD-NN_{slug}.md` + update `docs/BRD/BRD-00_TRACEABILITY_MATRIX.md`.
