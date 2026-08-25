@@ -3,11 +3,27 @@ name: Deploy to EC2
 on:
   push:
     branches: [ "main" ]
+  pull_request:
 
 jobs:
   # Fast validation gate — catches Dockerfile + TypeScript errors before any AWS spend
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: hearloop_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hearloop_test
     steps:
       - uses: actions/checkout@v4
 
@@ -17,11 +33,18 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: TypeScript check
-        run: npx tsc --noEmit
-        working-directory: apps/api
+      - run: npm run build --workspace=apps/api
+      - run: npm test --workspace=apps/api
+      - run: npm run build --workspace=apps/web
+      - run: npm run build --workspace=apps/quicklube-demo
+      - run: npm run build --workspace=packages/react
+      - run: npm test --workspace=packages/react
+      - run: bash scripts/check-browser-secret-examples.sh
+      - run: bash packages/db/tests/011_media_evidence_pinning.test.sh
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/hearloop_test
 
       - name: Dockerfile lint (hadolint)
         uses: hadolint/hadolint-action@v3.1.0
@@ -33,6 +56,7 @@ jobs:
   deploy:
     needs: validate
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
