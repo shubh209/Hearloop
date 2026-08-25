@@ -3,37 +3,47 @@
 import { db } from "../lib/db";
 
 export async function buildDashboardPayload(partnerId: string) {
+  const selection = [
+    "sessions.id",
+    "sessions.status",
+    "sessions.external_event_id",
+    "sessions.metadata_json",
+    "sessions.created_at",
+    "sessions.processing_started_at",
+    "sessions.processing_completed_at",
+    "analyses.transcript",
+    "analyses.sentiment_label",
+    "analyses.sentiment_score",
+    "analyses.topics_json",
+    "analyses.moderation_json",
+    "analyses.detected_language",
+    "analyses.model_used",
+    "analyses.input_tokens",
+    "analyses.output_tokens",
+    "recordings.duration_ms",
+    "recordings.mime_type",
+  ] as any;
+
+  const aggregateSessions = (await db
+    .selectFrom("sessions")
+    .leftJoin("analyses", "analyses.session_id", "sessions.id")
+    .leftJoin("recordings", "recordings.session_id", "sessions.id")
+    .select(selection)
+    .where("sessions.partner_id", "=", partnerId)
+    .execute()) as any[];
+
   const sessions = (await db
     .selectFrom("sessions")
     .leftJoin("analyses", "analyses.session_id", "sessions.id")
     .leftJoin("recordings", "recordings.session_id", "sessions.id")
-    .select([
-      "sessions.id",
-      "sessions.status",
-      "sessions.external_event_id",
-      "sessions.metadata_json",
-      "sessions.created_at",
-      "sessions.processing_started_at",
-      "sessions.processing_completed_at",
-      "analyses.transcript",
-      "analyses.sentiment_label",
-      "analyses.sentiment_score",
-      "analyses.topics_json",
-      "analyses.moderation_json",
-      "analyses.detected_language",
-      "analyses.model_used",
-      "analyses.input_tokens",
-      "analyses.output_tokens",
-      "recordings.duration_ms",
-      "recordings.mime_type",
-    ] as any)
+    .select(selection)
     .where("sessions.partner_id", "=", partnerId)
     .orderBy("sessions.created_at", "desc")
     .limit(100)
     .execute()) as any[];
 
-  const completed = sessions.filter((s) => s.status === "completed");
-  const total = sessions.length;
+  const completed = aggregateSessions.filter((s) => s.status === "completed");
+  const total = aggregateSessions.length;
 
   const sentiments = completed.map((s) => s.sentiment_label).filter(Boolean);
   const positiveCount = sentiments.filter((s) => s === "positive").length;
@@ -43,10 +53,16 @@ export async function buildDashboardPayload(partnerId: string) {
   const topicMap: Record<string, number> = {};
   completed.forEach((s) => {
     if (!s.topics_json) return;
-    const topics = JSON.parse(s.topics_json) as string[];
-    topics.forEach((t) => {
-      topicMap[t] = (topicMap[t] ?? 0) + 1;
-    });
+    try {
+      const topics = JSON.parse(s.topics_json) as string[];
+      if (Array.isArray(topics)) {
+        topics.forEach((t) => {
+          if (typeof t === "string") topicMap[t] = (topicMap[t] ?? 0) + 1;
+        });
+      }
+    } catch {
+      /* ignore malformed analysis data */
+    }
   });
 
   const topics = Object.entries(topicMap)
@@ -59,14 +75,22 @@ export async function buildDashboardPayload(partnerId: string) {
 
   const urgentSessions = completed.filter((s) => {
     if (!s.moderation_json) return false;
-    const mod = JSON.parse(s.moderation_json);
-    return mod.urgency === "urgent";
+    try {
+      const mod = JSON.parse(s.moderation_json);
+      return mod.urgency === "urgent";
+    } catch {
+      return false;
+    }
   });
 
   const followUpSessions = completed.filter((s) => {
     if (!s.moderation_json) return false;
-    const mod = JSON.parse(s.moderation_json);
-    return mod.urgency === "follow_up";
+    try {
+      const mod = JSON.parse(s.moderation_json);
+      return mod.urgency === "follow_up";
+    } catch {
+      return false;
+    }
   });
 
   const latencies = completed
