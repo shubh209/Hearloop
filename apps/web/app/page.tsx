@@ -2,7 +2,7 @@
 // hearloop/apps/web/app/page.tsx
 // Drop this file into apps/web/app/page.tsx
 
-import { useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 
 export default function LandingPage() {
   const [copied, setCopied] = useState(false);
@@ -939,7 +939,7 @@ export default function LandingPage() {
               <button
                 className={`code-tab ${activeTab === "node" ? "active" : ""}`}
                 onClick={() => setActiveTab("node")}
-              >Node.js</button>
+              >Node.js server</button>
             </div>
             <div className="code-body">
               {activeTab === "html" ? (
@@ -953,18 +953,21 @@ export default function LandingPage() {
                 });
               <span class="kw">&lt;/script&gt;</span>`}} />
                 ) : (
-                  <pre dangerouslySetInnerHTML={{__html: `<span class="cm">// Call your server route; credentials stay server-side</span>
-                  <span class="kw">const</span> session = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">"/api/feedback/session"</span>, {
+                  <pre dangerouslySetInnerHTML={{__html: `<span class="cm">// Server-only: never expose this secret in browser code</span>
+                  <span class="kw">const</span> apiUrl = process.env.HEARLOOP_API_URL;
+                  <span class="kw">const</span> secretKey = process.env.HEARLOOP_SECRET_KEY;
+
+                  <span class="kw">const</span> session = <span class="kw">await</span> <span class="fn">fetch</span>(apiUrl + <span class="str">"/v1/sessions"</span>, {
                     method: <span class="str">"POST"</span>,
                     headers: {
+                      <span class="str">"Authorization"</span>: <span class="str">"Bearer "</span> + secretKey,
                       <span class="str">"Content-Type"</span>: <span class="str">"application/json"</span>,
                     },        
                     body: <span class="fn">JSON.stringify</span>({
                     promptText: <span class="str">"How was your visit?"</span>,
-                    maxDurationSec: <span class="str">5</span>,
+                      maxDurationSec: <span class="str">5</span>,
                     }),
                   });
-                });
 
                   <span class="cm">// Receive insights via webhook</span>
                   <span class="cm">// POST https://your-domain.com/webhook</span>
@@ -1015,8 +1018,8 @@ export default function LandingPage() {
               { icon: "🧠", bg: "#F3F0FF", label: "Nova Lite", sub: "Classification" },
               { icon: "🔔", bg: "#FAEEDA", label: "Webhook", sub: "Your endpoint" },
             ].map((step, i, arr) => (
-              <>
-                <div key={step.label} className="pipeline-step">
+              <Fragment key={step.label}>
+                <div className="pipeline-step">
                   <div className="pipeline-icon" style={{background: step.bg}}>
                     <span style={{fontSize:18}}>{step.icon}</span>
                   </div>
@@ -1024,9 +1027,9 @@ export default function LandingPage() {
                   <div className="pipeline-sub">{step.sub}</div>
                 </div>
                 {i < arr.length - 1 && (
-                  <div key={`arr-${i}`} className="pipeline-arrow">→</div>
+                  <div className="pipeline-arrow">→</div>
                 )}
-              </>
+              </Fragment>
             ))}
           </div>
         </div>
