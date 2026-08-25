@@ -31,6 +31,16 @@ function mockSelect(table: string) {
         );
       }
 
+      if (table === "api_keys") {
+        const keyHash = conditionValue(conditions, "api_keys.key_hash");
+        const seededSession = mockSessions.find(
+          (session) => hashApiKey(session.public_token) === keyHash
+        );
+        if (!seededSession) {
+          throw new Error("expected lookup of a seeded Session public token");
+        }
+      }
+
       return undefined;
     },
   };
@@ -65,6 +75,7 @@ jest.mock("../../lib/db", () => ({
 import bcrypt from "bcrypt";
 import Fastify from "fastify";
 import { authenticatePartner } from "../../lib/authenticate-partner";
+import { hashApiKey } from "../../lib/hash-api-key";
 import { verifyPartnerSession } from "../../lib/partner-session";
 import { partnerMeRoutes } from "../partner-me";
 import { partnerRoutes } from "../partners";
@@ -133,6 +144,7 @@ describe("Partner registration and dashboard authentication", () => {
       headers: { authorization: `Bearer ${publicSessionToken}` },
     });
     expect(publicSession.statusCode).toBe(401);
+    expect(mockDb.selectFrom).toHaveBeenCalledWith("api_keys");
 
     const otherPartnerDashboard = await app.inject({
       method: "GET",
