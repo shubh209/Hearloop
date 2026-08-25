@@ -11,6 +11,13 @@ export type SessionCaptureConfig = {
   target?: SessionCaptureTarget | null;
 };
 
+export type LegacyValidationHandoff = {
+  state: "pending" | "enqueued";
+  languageHint?: string;
+};
+
+const LEGACY_VALIDATION_HANDOFF_KEY = "_hearloopValidationHandoff";
+
 type BuildSessionMetadataInput = {
   promptText?: string;
   consentRequired?: boolean;
@@ -35,6 +42,7 @@ export function buildSessionMetadata({
 }: BuildSessionMetadataInput): string {
   return JSON.stringify({
     ...metadata,
+    [LEGACY_VALIDATION_HANDOFF_KEY]: undefined,
     promptText,
     consentRequired,
     consentText,
@@ -49,16 +57,7 @@ export function readSessionCaptureConfig(
     return { consentRequired: false, target: null };
   }
 
-  let metadata: unknown;
-  try {
-    metadata = JSON.parse(metadataJson);
-  } catch {
-    throw new InvalidSessionCaptureConfigError();
-  }
-
-  if (!isRecord(metadata)) {
-    throw new InvalidSessionCaptureConfigError();
-  }
+  const metadata = parseSessionMetadata(metadataJson);
 
   if (
     metadata.consentRequired !== undefined &&
@@ -87,6 +86,42 @@ export function readSessionCaptureConfig(
   };
 }
 
+export function readLegacyValidationHandoff(
+  metadataJson: string | null | undefined
+): LegacyValidationHandoff | null {
+  if (metadataJson == null) {
+    return null;
+  }
+  const metadata = parseSessionMetadata(metadataJson);
+  const value = metadata[LEGACY_VALIDATION_HANDOFF_KEY];
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (
+    !isRecord(value) ||
+    (value.state !== "pending" && value.state !== "enqueued") ||
+    !isOptionalString(value.languageHint)
+  ) {
+    throw new InvalidSessionCaptureConfigError();
+  }
+  return {
+    state: value.state,
+    languageHint:
+      typeof value.languageHint === "string" ? value.languageHint : undefined,
+  };
+}
+
+export function writeLegacyValidationHandoff(
+  metadataJson: string | null | undefined,
+  handoff: LegacyValidationHandoff
+): string {
+  const metadata = metadataJson == null ? {} : parseSessionMetadata(metadataJson);
+  return JSON.stringify({
+    ...metadata,
+    [LEGACY_VALIDATION_HANDOFF_KEY]: handoff,
+  });
+}
+
 export function isFinalizeConsentValid(
   config: Pick<SessionCaptureConfig, "consentRequired">,
   consentGiven: boolean | undefined
@@ -96,6 +131,19 @@ export function isFinalizeConsentValid(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseSessionMetadata(metadataJson: string): Record<string, unknown> {
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(metadataJson);
+  } catch {
+    throw new InvalidSessionCaptureConfigError();
+  }
+  if (!isRecord(metadata)) {
+    throw new InvalidSessionCaptureConfigError();
+  }
+  return metadata;
 }
 
 function isOptionalString(value: unknown): boolean {

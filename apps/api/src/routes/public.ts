@@ -5,7 +5,6 @@ import { randomUUID } from "crypto";
 import crypto from "crypto";
 import { db } from "../lib/db";
 import { getUploadSignedUrl, buildStorageKey } from "../lib/storage";
-import { enqueueValidate } from "../lib/queue";
 import { logger } from "../lib/logger";
 import {
   lookupPartnerByApiKey,
@@ -23,6 +22,10 @@ import {
   isFinalizeConsentValid,
   readSessionCaptureConfig,
 } from "../lib/session-capture-config";
+import {
+  claimLegacyFinalize,
+  deliverPendingLegacyValidation,
+} from "../lib/legacy-finalize-handoff";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -353,9 +356,24 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(410).send({ error: "session_expired" });
       }
 
-      // Idempotent: already submitted
-      if (session.status === "submitted" || session.status === "processing") {
+      if (session.status === "processing") {
         return reply.send({ sessionId: session.id, status: session.status });
+      }
+
+      if (session.status === "submitted") {
+        await deliverPendingLegacyValidation(session);
+        const durableSession = await db
+          .selectFrom("sessions")
+          .select(["id", "status"])
+          .where("public_token", "=", token)
+          .executeTakeFirst();
+        if (!durableSession) {
+          return reply.code(404).send({ error: "session_not_found" });
+        }
+        return reply.send({
+          sessionId: durableSession.id,
+          status: durableSession.status,
+        });
       }
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
@@ -383,48 +401,61 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "storage_key_mismatch" });
       }
 
-      await db
-        .insertInto("recordings")
-        .values({
-          id: randomUUID(),
-          session_id: session.id,
-          storage_key: body.storageKey,
-          mime_type: body.mimeType,
-          duration_ms: body.durationMs ?? null,
-          size_bytes: body.sizeBytes ?? 0,
-          sha256_hash: body.sha256Hash ?? "",
-          created_at: new Date(),
-        })
-        .onConflict((oc) =>
-          oc.column("session_id").doUpdateSet({
-            storage_key: body.storageKey,
-            mime_type: body.mimeType,
-          })
-        )
-        .execute();
+      const claim = await claimLegacyFinalize(
+        session,
+        {
+          storageKey: body.storageKey,
+          mimeType: body.mimeType,
+          durationMs: body.durationMs,
+          sizeBytes: body.sizeBytes,
+          sha256Hash: body.sha256Hash,
+        },
+        body.languageHint
+      );
 
-      const submittedSession = await db
-        .updateTable("sessions")
-        .set({ status: "submitted", updated_at: new Date() })
-        .where("id", "=", session.id)
-        .where("status", "in", ["opened", "recording", "uploaded"])
-        .returning("id")
-        .executeTakeFirst();
-
-      if (!submittedSession) {
+      if (claim.claimed) {
+        await deliverPendingLegacyValidation(
+          {
+            ...session,
+            metadata_json: claim.pendingMetadata,
+          },
+          {
+            storageKey: body.storageKey,
+            mimeType: body.mimeType,
+          }
+        );
         return reply.send({ sessionId: session.id, status: "submitted" });
       }
 
-      await enqueueValidate({
-        sessionId: session.id,
-        storageKey: body.storageKey,
-        mimeType: body.mimeType,
-        languageHint: body.languageHint,
-        promptText: captureConfig.promptText,
-        maxDurationSec: session.max_duration_sec,
-      });
+      const durableSession = await db
+        .selectFrom("sessions")
+        .select(["id", "status", "metadata_json", "max_duration_sec"])
+        .where("public_token", "=", token)
+        .executeTakeFirst();
+      if (!durableSession) {
+        return reply.code(404).send({ error: "session_not_found" });
+      }
+      if (durableSession.status === "submitted") {
+        await deliverPendingLegacyValidation(durableSession);
+      } else {
+        return reply.send({
+          sessionId: durableSession.id,
+          status: durableSession.status,
+        });
+      }
+      const latestSession = await db
+        .selectFrom("sessions")
+        .select(["id", "status"])
+        .where("public_token", "=", token)
+        .executeTakeFirst();
+      if (!latestSession) {
+        return reply.code(404).send({ error: "session_not_found" });
+      }
 
-      return reply.send({ sessionId: session.id, status: "submitted" });
+      return reply.send({
+        sessionId: latestSession.id,
+        status: latestSession.status,
+      });
     }
   );
 

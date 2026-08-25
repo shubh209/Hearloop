@@ -15,8 +15,9 @@ const mockIssueVersionedUploadGrant = jest.fn();
 const mockLookupPartnerByApiKey = jest.fn();
 const mockClaimSessionCreateToken = jest.fn();
 const mockEnqueueValidate = jest.fn();
-jest.mock('../../lib/db', () => ({
-  db: {
+const mockTransactionExecute = jest.fn();
+jest.mock('../../lib/db', () => {
+  const database = {
     selectFrom: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
@@ -38,8 +39,12 @@ jest.mock('../../lib/db', () => ({
     },
     returning: jest.fn().mockReturnThis(),
     execute: (...args: unknown[]) => mockExecuteInsert(...args),
-  },
-}));
+    transaction: jest.fn().mockReturnValue({
+      execute: (callback: Function) => mockTransactionExecute(callback, database),
+    }),
+  };
+  return { db: database };
+});
 
 jest.mock('../../lib/lookup-api-key', () => ({
   ...jest.requireActual('../../lib/lookup-api-key'),
@@ -670,6 +675,9 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     mockValues.mockReset();
     mockSet.mockReset();
     mockWhere.mockReset();
+    mockTransactionExecute
+      .mockReset()
+      .mockImplementation((callback, database) => callback(database));
     mockEnqueueValidate.mockReset().mockResolvedValue(undefined);
   });
 
@@ -811,10 +819,13 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
       max_duration_sec: 5,
       metadata_json: JSON.stringify({ consentRequired: true }),
     };
-    let selectionCount = 0;
+    let executeCount = 0;
     mockExecuteTakeFirst.mockImplementation(async () => {
-      if (selectionCount < 2) {
-        selectionCount += 1;
+      executeCount += 1;
+      if (executeCount <= 2) {
+        return { ...sharedSession };
+      }
+      if (executeCount > 4) {
         return { ...sharedSession };
       }
       const acceptedStateConstraint = mockWhere.mock.calls.at(-1);
@@ -833,14 +844,106 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
       }
       return undefined;
     });
-    const effectiveQueueJobs: string[] = [];
+    const effectiveQueueJobs: Array<{
+      jobId: string;
+      storageKey: string;
+      mimeType: string;
+    }> = [];
     const effectiveRecordings = new Map<string, unknown>();
     mockExecuteInsert.mockImplementation(async () => {
       const recording = mockValues.mock.calls.at(-1)?.[0];
       effectiveRecordings.set(recording.session_id, recording);
     });
-    mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
-      effectiveQueueJobs.push(`validate-${sessionId}`);
+    mockEnqueueValidate.mockImplementation(async ({ sessionId, storageKey, mimeType }) => {
+      effectiveQueueJobs.push({
+        jobId: `validate-${sessionId}`,
+        storageKey,
+        mimeType,
+      });
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const replies = [makeReply(), makeReply()];
+    const requests = [
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/session-1/audio.webm',
+          mimeType: 'audio/webm',
+          consentGiven: true,
+        },
+      },
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/session-1/audio.ogg',
+          mimeType: 'audio/ogg',
+          consentGiven: true,
+        },
+      },
+    ];
+
+    await Promise.all(
+      replies.map((reply, index) =>
+        handlers['POST /public/session/:token/finalize'](requests[index], reply)
+      )
+    );
+
+    expect(effectiveQueueJobs).toHaveLength(1);
+    expect(effectiveQueueJobs[0].jobId).toBe('validate-session-1');
+    expect(sharedSession.status).toBe('submitted');
+    expect(mockValues).toHaveBeenCalledTimes(1);
+    expect(effectiveRecordings.size).toBe(1);
+    expect(effectiveRecordings.get('session-1')).toEqual(
+      expect.objectContaining({
+        session_id: 'session-1',
+        storage_key: effectiveQueueJobs[0].storageKey,
+        mime_type: effectiveQueueJobs[0].mimeType,
+      })
+    );
+    for (const reply of replies) {
+      expect(reply.send).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        status: 'submitted',
+      });
+    }
+  });
+
+  it('returns processing when the winning finalize advances before the loser responds', async () => {
+    const sharedSession = {
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    };
+    let executeCount = 0;
+    let releaseDurableRead: () => void = () => undefined;
+    const winnerProcessing = new Promise<void>((resolve) => {
+      releaseDurableRead = resolve;
+    });
+    mockExecuteTakeFirst.mockImplementation(async () => {
+      executeCount += 1;
+      if (executeCount <= 2) {
+        return { ...sharedSession };
+      }
+      if (executeCount === 5) {
+        await winnerProcessing;
+        return { ...sharedSession };
+      }
+      if (executeCount > 5) {
+        return { ...sharedSession };
+      }
+      if (sharedSession.status === 'opened') {
+        sharedSession.status = 'submitted';
+        return { id: sharedSession.id };
+      }
+      return undefined;
+    });
+    mockEnqueueValidate.mockImplementation(async () => {
+      sharedSession.status = 'processing';
+      releaseDurableRead();
     });
     const { app, handlers } = makeApp();
     await publicRoutes(app);
@@ -860,20 +963,78 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
       )
     );
 
-    expect(effectiveQueueJobs).toEqual(['validate-session-1']);
-    expect(sharedSession.status).toBe('submitted');
-    expect(effectiveRecordings.size).toBe(1);
-    expect(effectiveRecordings.get('session-1')).toEqual(expect.objectContaining({
-      session_id: 'session-1',
-      storage_key: 'recordings/session-1/audio.webm',
-      mime_type: 'audio/webm',
-    }));
-    for (const reply of replies) {
-      expect(reply.send).toHaveBeenCalledWith({
-        sessionId: 'session-1',
+    expect(replies.map((reply) => reply.send.mock.calls.at(-1)?.[0].status)).toEqual([
+      'submitted',
+      'processing',
+    ]);
+  });
+
+  it('recovers a pending validation handoff after enqueue rejects', async () => {
+    const openedSession = {
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    };
+    let executeCount = 0;
+    mockExecuteTakeFirst.mockImplementation(async () => {
+      executeCount += 1;
+      if (executeCount === 1) return openedSession;
+      if (executeCount === 2) return { id: 'session-1' };
+      const submittedSet = mockSet.mock.calls.find(
+        ([value]) => value.status === 'submitted'
+      )?.[0];
+      if (executeCount === 3) {
+        return {
+          ...openedSession,
+          status: 'submitted',
+          metadata_json: submittedSet.metadata_json,
+        };
+      }
+      if (executeCount === 4) {
+        return {
+          storage_key: 'recordings/session-1/audio.webm',
+          mime_type: 'audio/webm',
+        };
+      }
+      const latestMetadata = mockSet.mock.calls
+        .map(([value]) => value.metadata_json)
+        .filter(Boolean)
+        .at(-1);
+      return {
+        ...openedSession,
         status: 'submitted',
+        metadata_json: latestMetadata,
+      };
+    });
+    const effectiveQueueJobs: string[] = [];
+    mockEnqueueValidate
+      .mockRejectedValueOnce(new Error('queue unavailable'))
+      .mockImplementationOnce(async ({ sessionId }) => {
+        effectiveQueueJobs.push(`validate-${sessionId}`);
       });
-    }
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const request = {
+      params: { token: 'tok-1' },
+      body: {
+        storageKey: 'recordings/session-1/audio.webm',
+        mimeType: 'audio/webm',
+        consentGiven: true,
+      },
+    };
+
+    await expect(
+      handlers['POST /public/session/:token/finalize'](request, makeReply())
+    ).rejects.toThrow('queue unavailable');
+    await handlers['POST /public/session/:token/finalize'](request, makeReply());
+    await handlers['POST /public/session/:token/finalize'](request, makeReply());
+
+    expect(effectiveQueueJobs).toEqual(['validate-session-1']);
+    expect(mockEnqueueValidate).toHaveBeenCalledTimes(2);
+    expect(mockValues).toHaveBeenCalledTimes(1);
   });
 
   it('enqueues the persisted prompt instead of caller-controlled finalize metadata', async () => {

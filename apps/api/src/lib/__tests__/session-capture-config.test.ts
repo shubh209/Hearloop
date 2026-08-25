@@ -2,7 +2,9 @@ import {
   buildSessionMetadata,
   InvalidSessionCaptureConfigError,
   isFinalizeConsentValid,
+  readLegacyValidationHandoff,
   readSessionCaptureConfig,
+  writeLegacyValidationHandoff,
 } from "../session-capture-config";
 
 describe("Session capture configuration", () => {
@@ -42,6 +44,51 @@ describe("Session capture configuration", () => {
       consentRequired: false,
       target: null,
     });
+  });
+
+  it("keeps the internal validation handoff authoritative and preserves capture metadata", () => {
+    const metadataJson = buildSessionMetadata({
+      metadata: {
+        campaign: "summer-service",
+        _hearloopValidationHandoff: {
+          state: "enqueued",
+          languageHint: "attacker-controlled",
+        },
+      },
+      promptText: "How was your visit?",
+      consentRequired: true,
+    });
+
+    expect(readLegacyValidationHandoff(metadataJson)).toBeNull();
+
+    const pendingJson = writeLegacyValidationHandoff(metadataJson, {
+      state: "pending",
+      languageHint: "en-US",
+    });
+    expect(readLegacyValidationHandoff(pendingJson)).toEqual({
+      state: "pending",
+      languageHint: "en-US",
+    });
+    expect(readSessionCaptureConfig(pendingJson)).toEqual({
+      promptText: "How was your visit?",
+      consentRequired: true,
+      consentText: undefined,
+      target: null,
+    });
+
+    const enqueuedJson = writeLegacyValidationHandoff(pendingJson, {
+      state: "enqueued",
+      languageHint: "en-US",
+    });
+    expect(readLegacyValidationHandoff(enqueuedJson)).toEqual({
+      state: "enqueued",
+      languageHint: "en-US",
+    });
+    expect(JSON.parse(enqueuedJson)).toEqual(expect.objectContaining({
+      campaign: "summer-service",
+      promptText: "How was your visit?",
+      consentRequired: true,
+    }));
   });
 
   it.each([

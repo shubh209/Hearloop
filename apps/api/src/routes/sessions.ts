@@ -3,7 +3,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { db } from "../lib/db";
 import { getUploadSignedUrl, deleteAudio, buildStorageKey } from "../lib/storage";
-import { enqueueValidate, enqueueExpireSession } from "../lib/queue";
+import { enqueueExpireSession } from "../lib/queue";
 import { randomUUID } from "crypto";
 import {
   issueVersionedUploadGrant,
@@ -15,6 +15,10 @@ import {
   isFinalizeConsentValid,
   readSessionCaptureConfig,
 } from "../lib/session-capture-config";
+import {
+  claimLegacyFinalize,
+  deliverPendingLegacyValidation,
+} from "../lib/legacy-finalize-handoff";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -288,9 +292,22 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: "session_not_found" });
       }
 
-      if (session.status === "submitted" || session.status === "processing") {
-        // Idempotent — already submitted
+      if (session.status === "processing") {
         return reply.send({ sessionId: id, status: session.status });
+      }
+
+      if (session.status === "submitted") {
+        await deliverPendingLegacyValidation(session);
+        const durableSession = await db
+          .selectFrom("sessions")
+          .select(["id", "status"])
+          .where("id", "=", id)
+          .where("partner_id", "=", partner.id)
+          .executeTakeFirst();
+        if (!durableSession) {
+          return reply.code(404).send({ error: "session_not_found" });
+        }
+        return reply.send({ sessionId: id, status: durableSession.status });
       }
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
@@ -318,51 +335,57 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "storage_key_mismatch" });
       }
 
-      // Upsert recording row
-      await db
-        .insertInto("recordings")
-        .values({
-          id: randomUUID(),
-          session_id: id,
-          storage_key: body.storageKey,
-          mime_type: body.mimeType,
-          duration_ms: body.durationMs ?? null,
-          size_bytes: body.sizeBytes ?? 0,
-          sha256_hash: body.sha256Hash ?? "",
-          created_at: new Date(),
-        })
-        .onConflict((oc) =>
-          oc.column("session_id").doUpdateSet({
-            storage_key: body.storageKey,
-            mime_type: body.mimeType,
-          })
-        )
-        .execute();
+      const claim = await claimLegacyFinalize(
+        session,
+        {
+          storageKey: body.storageKey,
+          mimeType: body.mimeType,
+          durationMs: body.durationMs,
+          sizeBytes: body.sizeBytes,
+          sha256Hash: body.sha256Hash,
+        },
+        body.languageHint
+      );
 
-      // Transition to submitted
-      const submittedSession = await db
-        .updateTable("sessions")
-        .set({ status: "submitted", updated_at: new Date() })
-        .where("id", "=", id)
-        .where("status", "in", ["opened", "recording", "uploaded"])
-        .returning("id")
-        .executeTakeFirst();
-
-      if (!submittedSession) {
+      if (claim.claimed) {
+        await deliverPendingLegacyValidation(
+          {
+            ...session,
+            metadata_json: claim.pendingMetadata,
+          },
+          {
+            storageKey: body.storageKey,
+            mimeType: body.mimeType,
+          }
+        );
         return reply.send({ sessionId: id, status: "submitted" });
       }
 
-      // Kick off processing pipeline via validation first
-      await enqueueValidate({
-        sessionId: id,
-        storageKey: body.storageKey,
-        mimeType: body.mimeType,
-        languageHint: body.languageHint,
-        promptText: captureConfig.promptText,
-        maxDurationSec: session.max_duration_sec,
-      });
+      const durableSession = await db
+        .selectFrom("sessions")
+        .select(["id", "status", "metadata_json", "max_duration_sec"])
+        .where("id", "=", id)
+        .where("partner_id", "=", partner.id)
+        .executeTakeFirst();
+      if (!durableSession) {
+        return reply.code(404).send({ error: "session_not_found" });
+      }
+      if (durableSession.status === "submitted") {
+        await deliverPendingLegacyValidation(durableSession);
+      } else {
+        return reply.send({ sessionId: id, status: durableSession.status });
+      }
+      const latestSession = await db
+        .selectFrom("sessions")
+        .select(["id", "status"])
+        .where("id", "=", id)
+        .where("partner_id", "=", partner.id)
+        .executeTakeFirst();
+      if (!latestSession) {
+        return reply.code(404).send({ error: "session_not_found" });
+      }
 
-      return reply.send({ sessionId: id, status: "submitted" });
+      return reply.send({ sessionId: id, status: latestSession.status });
     }
   );
 
