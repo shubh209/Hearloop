@@ -403,11 +403,17 @@ export async function publicRoutes(app: FastifyInstance) {
         )
         .execute();
 
-      await db
+      const submittedSession = await db
         .updateTable("sessions")
         .set({ status: "submitted", updated_at: new Date() })
         .where("id", "=", session.id)
-        .execute();
+        .where("status", "in", ["opened", "recording", "uploaded"])
+        .returning("id")
+        .executeTakeFirst();
+
+      if (!submittedSession) {
+        return reply.send({ sessionId: session.id, status: "submitted" });
+      }
 
       await enqueueValidate({
         sessionId: session.id,

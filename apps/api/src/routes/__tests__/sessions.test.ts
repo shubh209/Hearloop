@@ -7,6 +7,7 @@ const mockExecuteTakeFirst = jest.fn();
 const mockExecute = jest.fn();
 const mockValues = jest.fn();
 const mockSet = jest.fn();
+const mockWhere = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
 const mockEnqueueValidate = jest.fn();
@@ -16,7 +17,10 @@ jest.mock('../../lib/db', () => ({
     selectFrom: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     selectAll: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
+    where: function (...args: unknown[]) {
+      mockWhere(...args);
+      return this;
+    },
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
     insertInto: jest.fn().mockReturnThis(),
     values: function (...args: unknown[]) {
@@ -29,6 +33,7 @@ jest.mock('../../lib/db', () => ({
       mockSet(...args);
       return this;
     },
+    returning: jest.fn().mockReturnThis(),
     execute: (...args: unknown[]) => mockExecute(...args),
   },
 }));
@@ -311,6 +316,7 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     mockExecute.mockReset().mockResolvedValue(undefined);
     mockValues.mockReset();
     mockSet.mockReset();
+    mockWhere.mockReset();
     mockEnqueueValidate.mockReset().mockResolvedValue(undefined);
   });
 
@@ -403,5 +409,160 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     expect(mockValues).not.toHaveBeenCalled();
     expect(mockSet).not.toHaveBeenCalled();
     expect(mockEnqueueValidate).not.toHaveBeenCalled();
+  });
+
+  it('finalizes a consent-valid legacy Session and starts validation once', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({
+        promptText: 'Persisted prompt',
+        consentRequired: true,
+      }),
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        body: {
+          storageKey: `recordings/${VALID_ID}/audio.webm`,
+          mimeType: 'audio/webm',
+          durationMs: 3200,
+          sizeBytes: 4096,
+          consentGiven: true,
+        },
+      },
+      reply
+    );
+
+    expect(mockValues).toHaveBeenCalledWith(expect.objectContaining({
+      session_id: VALID_ID,
+      storage_key: `recordings/${VALID_ID}/audio.webm`,
+      mime_type: 'audio/webm',
+      duration_ms: 3200,
+      size_bytes: 4096,
+    }));
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'submitted' }));
+    expect(mockEnqueueValidate).toHaveBeenCalledWith({
+      sessionId: VALID_ID,
+      storageKey: `recordings/${VALID_ID}/audio.webm`,
+      mimeType: 'audio/webm',
+      languageHint: undefined,
+      promptText: 'Persisted prompt',
+      maxDurationSec: 5,
+    });
+    expect(reply.send).toHaveBeenCalledWith({ sessionId: VALID_ID, status: 'submitted' });
+  });
+
+  it.each(['submitted', 'processing']) (
+    'returns durable %s status on replay without another Recording write or Pipeline start',
+    async (status) => {
+      mockExecuteTakeFirst.mockResolvedValue({
+        id: VALID_ID,
+        partner_id: 'partner-1',
+        status,
+        max_duration_sec: 5,
+        metadata_json: JSON.stringify({ consentRequired: true }),
+      });
+      const { app, handlers } = makeApp();
+      await sessionRoutes(app);
+      const reply = makeReply();
+
+      await handlers['POST /sessions/:id/finalize'](
+        {
+          params: { id: VALID_ID },
+          partner: { id: 'partner-1' },
+          body: {
+            storageKey: `recordings/${VALID_ID}/audio.webm`,
+            mimeType: 'audio/webm',
+            consentGiven: true,
+          },
+        },
+        reply
+      );
+
+      expect(reply.send).toHaveBeenCalledWith({ sessionId: VALID_ID, status });
+      expect(mockValues).not.toHaveBeenCalled();
+      expect(mockSet).not.toHaveBeenCalled();
+      expect(mockEnqueueValidate).not.toHaveBeenCalled();
+    }
+  );
+
+  it('allows only one concurrent request to start validation for an opened Session', async () => {
+    const sharedSession = {
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    };
+    let selectionCount = 0;
+    mockExecuteTakeFirst.mockImplementation(async () => {
+      if (selectionCount < 2) {
+        selectionCount += 1;
+        return { ...sharedSession };
+      }
+      const acceptedStateConstraint = mockWhere.mock.calls.at(-1);
+      if (
+        acceptedStateConstraint?.[0] !== 'status' ||
+        acceptedStateConstraint?.[1] !== 'in' ||
+        JSON.stringify(acceptedStateConstraint?.[2]) !==
+          JSON.stringify(['opened', 'recording', 'uploaded'])
+      ) {
+        sharedSession.status = 'submitted';
+        return { id: sharedSession.id };
+      }
+      if (sharedSession.status === 'opened') {
+        sharedSession.status = 'submitted';
+        return { id: sharedSession.id };
+      }
+      return undefined;
+    });
+    const effectiveQueueJobs: string[] = [];
+    const effectiveRecordings = new Map<string, unknown>();
+    mockExecute.mockImplementation(async () => {
+      const recording = mockValues.mock.calls.at(-1)?.[0];
+      effectiveRecordings.set(recording.session_id, recording);
+    });
+    mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
+      effectiveQueueJobs.push(`validate-${sessionId}`);
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const replies = [makeReply(), makeReply()];
+    const request = {
+      params: { id: VALID_ID },
+      partner: { id: 'partner-1' },
+      body: {
+        storageKey: `recordings/${VALID_ID}/audio.webm`,
+        mimeType: 'audio/webm',
+        consentGiven: true,
+      },
+    };
+
+    await Promise.all(
+      replies.map((reply) => handlers['POST /sessions/:id/finalize'](request, reply))
+    );
+
+    expect(effectiveQueueJobs).toEqual([`validate-${VALID_ID}`]);
+    expect(sharedSession.status).toBe('submitted');
+    expect(effectiveRecordings.size).toBe(1);
+    expect(effectiveRecordings.get(VALID_ID)).toEqual(expect.objectContaining({
+      session_id: VALID_ID,
+      storage_key: `recordings/${VALID_ID}/audio.webm`,
+      mime_type: 'audio/webm',
+    }));
+    for (const reply of replies) {
+      expect(reply.send).toHaveBeenCalledWith({
+        sessionId: VALID_ID,
+        status: 'submitted',
+      });
+    }
   });
 });

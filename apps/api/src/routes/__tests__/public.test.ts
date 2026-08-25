@@ -36,6 +36,7 @@ jest.mock('../../lib/db', () => ({
       mockSet(...args);
       return this;
     },
+    returning: jest.fn().mockReturnThis(),
     execute: (...args: unknown[]) => mockExecuteInsert(...args),
   },
 }));
@@ -668,6 +669,7 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     mockExecuteInsert.mockReset().mockResolvedValue(undefined);
     mockValues.mockReset();
     mockSet.mockReset();
+    mockWhere.mockReset();
     mockEnqueueValidate.mockReset().mockResolvedValue(undefined);
   });
 
@@ -764,6 +766,114 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     expect(mockValues).toHaveBeenCalledTimes(1);
     expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'submitted' }));
     expect(mockEnqueueValidate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['submitted', 'processing']) (
+    'returns durable %s status on replay without another Recording write or Pipeline start',
+    async (status) => {
+      mockExecuteTakeFirst.mockResolvedValue({
+        id: 'session-1',
+        partner_id: 'partner-1',
+        status,
+        expires_at: new Date(Date.now() + 60_000),
+        max_duration_sec: 5,
+        metadata_json: JSON.stringify({ consentRequired: true }),
+      });
+      const { app, handlers } = makeApp();
+      await publicRoutes(app);
+      const reply = makeReply();
+
+      await handlers['POST /public/session/:token/finalize'](
+        {
+          params: { token: 'tok-1' },
+          body: {
+            storageKey: 'recordings/session-1/audio.webm',
+            mimeType: 'audio/webm',
+            consentGiven: true,
+          },
+        },
+        reply
+      );
+
+      expect(reply.send).toHaveBeenCalledWith({ sessionId: 'session-1', status });
+      expect(mockValues).not.toHaveBeenCalled();
+      expect(mockSet).not.toHaveBeenCalled();
+      expect(mockEnqueueValidate).not.toHaveBeenCalled();
+    }
+  );
+
+  it('allows only one concurrent request to start validation for an opened Session', async () => {
+    const sharedSession = {
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    };
+    let selectionCount = 0;
+    mockExecuteTakeFirst.mockImplementation(async () => {
+      if (selectionCount < 2) {
+        selectionCount += 1;
+        return { ...sharedSession };
+      }
+      const acceptedStateConstraint = mockWhere.mock.calls.at(-1);
+      if (
+        acceptedStateConstraint?.[0] !== 'status' ||
+        acceptedStateConstraint?.[1] !== 'in' ||
+        JSON.stringify(acceptedStateConstraint?.[2]) !==
+          JSON.stringify(['opened', 'recording', 'uploaded'])
+      ) {
+        sharedSession.status = 'submitted';
+        return { id: sharedSession.id };
+      }
+      if (sharedSession.status === 'opened') {
+        sharedSession.status = 'submitted';
+        return { id: sharedSession.id };
+      }
+      return undefined;
+    });
+    const effectiveQueueJobs: string[] = [];
+    const effectiveRecordings = new Map<string, unknown>();
+    mockExecuteInsert.mockImplementation(async () => {
+      const recording = mockValues.mock.calls.at(-1)?.[0];
+      effectiveRecordings.set(recording.session_id, recording);
+    });
+    mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
+      effectiveQueueJobs.push(`validate-${sessionId}`);
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const replies = [makeReply(), makeReply()];
+    const request = {
+      params: { token: 'tok-1' },
+      body: {
+        storageKey: 'recordings/session-1/audio.webm',
+        mimeType: 'audio/webm',
+        consentGiven: true,
+      },
+    };
+
+    await Promise.all(
+      replies.map((reply) =>
+        handlers['POST /public/session/:token/finalize'](request, reply)
+      )
+    );
+
+    expect(effectiveQueueJobs).toEqual(['validate-session-1']);
+    expect(sharedSession.status).toBe('submitted');
+    expect(effectiveRecordings.size).toBe(1);
+    expect(effectiveRecordings.get('session-1')).toEqual(expect.objectContaining({
+      session_id: 'session-1',
+      storage_key: 'recordings/session-1/audio.webm',
+      mime_type: 'audio/webm',
+    }));
+    for (const reply of replies) {
+      expect(reply.send).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        status: 'submitted',
+      });
+    }
   });
 
   it('enqueues the persisted prompt instead of caller-controlled finalize metadata', async () => {

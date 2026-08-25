@@ -340,11 +340,17 @@ export async function sessionRoutes(app: FastifyInstance) {
         .execute();
 
       // Transition to submitted
-      await db
+      const submittedSession = await db
         .updateTable("sessions")
         .set({ status: "submitted", updated_at: new Date() })
         .where("id", "=", id)
-        .execute();
+        .where("status", "in", ["opened", "recording", "uploaded"])
+        .returning("id")
+        .executeTakeFirst();
+
+      if (!submittedSession) {
+        return reply.send({ sessionId: id, status: "submitted" });
+      }
 
       // Kick off processing pipeline via validation first
       await enqueueValidate({
