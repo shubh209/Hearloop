@@ -76,6 +76,54 @@ export async function orchestrateLegacyFinalize({
   return toResult(await readScopedSession());
 }
 
+export async function acknowledgeLegacyValidationHandoff(
+  sessionId: string
+): Promise<void> {
+  const session = await db
+    .selectFrom("sessions")
+    .select(["id", "metadata_json"])
+    .where("id", "=", sessionId)
+    .executeTakeFirst();
+  if (!session) {
+    return;
+  }
+
+  const handoff = readLegacyValidationHandoff(session.metadata_json);
+  if (!handoff || handoff.state === "enqueued") {
+    return;
+  }
+
+  const enqueuedMetadata = writeLegacyValidationHandoff(session.metadata_json, {
+    state: "enqueued",
+    languageHint: handoff.languageHint,
+  });
+  const acknowledged = await db
+    .updateTable("sessions")
+    .set({ metadata_json: enqueuedMetadata, updated_at: new Date() })
+    .where("id", "=", sessionId)
+    .where("metadata_json", "=", session.metadata_json)
+    .returning("id")
+    .executeTakeFirst();
+  if (acknowledged) {
+    return;
+  }
+
+  const durableSession = await db
+    .selectFrom("sessions")
+    .select(["id", "metadata_json"])
+    .where("id", "=", sessionId)
+    .executeTakeFirst();
+  if (
+    durableSession &&
+    readLegacyValidationHandoff(durableSession.metadata_json)?.state ===
+      "enqueued"
+  ) {
+    return;
+  }
+
+  throw new Error("validation_handoff_acknowledgement_failed");
+}
+
 async function claimLegacyFinalize(
   session: LegacyFinalizeSession,
   recording: LegacyRecordingInput,

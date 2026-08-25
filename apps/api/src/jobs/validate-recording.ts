@@ -5,6 +5,7 @@ import { getAudioBuffer } from "../lib/storage";
 import { enqueueTranscribe } from "../lib/queue";
 import { jobLogger } from "../lib/logger";
 import { markFailed } from "./helpers/mark-failed";
+import { acknowledgeLegacyValidationHandoff } from "../lib/legacy-finalize-handoff";
 
 const log = jobLogger("validate-recording");
 
@@ -85,23 +86,38 @@ export async function runValidateRecordingJob(
     throw new Error("invalid_audio_header");
   }
 
-  // 4. Update recording size in DB
-  await db
-    .updateTable("recordings")
-    .set({ size_bytes: audioBuffer.byteLength })
-    .where("session_id", "=", sessionId)
-    .execute();
+  // 4. Persist the validated size. Unexpected database failures must agree
+  // with a terminal Session state before BullMQ can exhaust this job.
+  try {
+    await db
+      .updateTable("recordings")
+      .set({ size_bytes: audioBuffer.byteLength })
+      .where("session_id", "=", sessionId)
+      .execute();
+  } catch (error) {
+    await markFailed(sessionId, "recording_update_error", log);
+    throw error;
+  }
+
+  // Repair a dispatcher acknowledgement loss before this bounded BullMQ job
+  // can complete and remove its deterministic id. Non-legacy Sessions no-op.
+  await acknowledgeLegacyValidationHandoff(sessionId);
 
   log.info({ sessionId, sizeBytes: audioBuffer.byteLength, mimeType }, "validation passed, enqueuing transcribe");
 
   // 5. Validation passed — enqueue transcription
-  await enqueueTranscribe({
-    sessionId,
-    storageKey,
-    mimeType,
-    languageHint,
-    promptText,
-  });
+  try {
+    await enqueueTranscribe({
+      sessionId,
+      storageKey,
+      mimeType,
+      languageHint,
+      promptText,
+    });
+  } catch (error) {
+    await markFailed(sessionId, "transcription_enqueue_error", log);
+    throw error;
+  }
 }
 
 // --- helpers ---

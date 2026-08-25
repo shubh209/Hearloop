@@ -36,6 +36,12 @@ jest.mock("../../lib/queue", () => ({
   enqueueTranscribe: (...args: unknown[]) => mockEnqueueTranscribe(...args),
 }));
 
+const mockAcknowledgeLegacyValidationHandoff = jest.fn();
+jest.mock("../../lib/legacy-finalize-handoff", () => ({
+  acknowledgeLegacyValidationHandoff: (...args: unknown[]) =>
+    mockAcknowledgeLegacyValidationHandoff(...args),
+}));
+
 // db — mock the Kysely query builder chain used in validate-recording.ts
 const mockExecute = jest.fn();
 
@@ -84,6 +90,7 @@ beforeEach(() => {
   mockUpdateChain.where.mockReturnThis();
   mockExecute.mockResolvedValue([]);
   mockEnqueueTranscribe.mockResolvedValue(undefined);
+  mockAcknowledgeLegacyValidationHandoff.mockResolvedValue(undefined);
 });
 
 describe("runValidateRecordingJob — failure branches must throw and mark session failed", () => {
@@ -176,6 +183,49 @@ describe("runValidateRecordingJob — failure branches must throw and mark sessi
     await expect(runValidateRecordingJob(BASE_PAYLOAD)).resolves.toBeUndefined();
 
     expect(sessionsFailedSetCalls()).toHaveLength(0);
+    expect(mockAcknowledgeLegacyValidationHandoff).toHaveBeenCalledWith(
+      "session-abc"
+    );
     expect(mockEnqueueTranscribe).toHaveBeenCalledTimes(1);
+    expect(
+      mockAcknowledgeLegacyValidationHandoff.mock.invocationCallOrder[0]
+    ).toBeLessThan(mockEnqueueTranscribe.mock.invocationCallOrder[0]);
+  });
+
+  it("marks the Session failed when the validated Recording update rejects", async () => {
+    mockGetAudioBuffer.mockResolvedValue(validAudioBuffer());
+    mockExecute.mockRejectedValueOnce(new Error("database unavailable"));
+
+    await expect(runValidateRecordingJob(BASE_PAYLOAD)).rejects.toThrow(
+      "database unavailable"
+    );
+
+    expect(sessionsFailedSetCalls()).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        failure_reason: "recording_update_error",
+      }),
+    ]);
+    expect(mockAcknowledgeLegacyValidationHandoff).not.toHaveBeenCalled();
+    expect(mockEnqueueTranscribe).not.toHaveBeenCalled();
+  });
+
+  it("marks the Session failed when transcription enqueue rejects", async () => {
+    mockGetAudioBuffer.mockResolvedValue(validAudioBuffer());
+    mockEnqueueTranscribe.mockRejectedValue(new Error("queue unavailable"));
+
+    await expect(runValidateRecordingJob(BASE_PAYLOAD)).rejects.toThrow(
+      "queue unavailable"
+    );
+
+    expect(mockAcknowledgeLegacyValidationHandoff).toHaveBeenCalledWith(
+      "session-abc"
+    );
+    expect(sessionsFailedSetCalls()).toEqual([
+      expect.objectContaining({
+        status: "failed",
+        failure_reason: "transcription_enqueue_error",
+      }),
+    ]);
   });
 });

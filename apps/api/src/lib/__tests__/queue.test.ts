@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 describe("Pipeline job retention", () => {
-  it("retains completed validation jobs as durable finalize deduplication evidence", async () => {
+  it("keeps validation job removal bounded after worker-side durable acknowledgement", async () => {
     mockAdd.mockResolvedValue(undefined);
 
     await enqueueValidate({
@@ -47,8 +47,8 @@ describe("Pipeline job retention", () => {
       expect.objectContaining({ sessionId: "session-1" }),
       expect.objectContaining({
         jobId: "validate-session-1",
-        removeOnComplete: false,
-        removeOnFail: false,
+        removeOnComplete: true,
+        removeOnFail: { count: 50 },
       })
     );
   });

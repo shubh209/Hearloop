@@ -62,6 +62,7 @@ jest.mock('../../lib/queue', () => ({
 
 import { sessionRoutes } from '../sessions';
 import { UploadGrantError } from '../../lib/upload-grants';
+import { writeLegacyValidationHandoff } from '../../lib/session-capture-config';
 
 const VALID_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -728,7 +729,7 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     expect(mockValues).toHaveBeenCalledTimes(1);
   });
 
-  it('deduplicates retry after enqueue succeeds but the marker acknowledgement affects zero rows', async () => {
+  it('does not restart validation after worker acknowledgement and completed-job removal', async () => {
     const sharedSession = {
       id: VALID_ID,
       partner_id: 'partner-1',
@@ -748,7 +749,7 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
         Object.assign(sharedSession, submittedSet);
         return { id: sharedSession.id };
       }
-      if (executeCount === 3 || executeCount === 5) {
+      if (executeCount >= 3) {
         return { ...sharedSession };
       }
       return persistedRecording;
@@ -761,11 +762,10 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     const enqueueAttempts: string[] = [];
     const effectiveStarts: string[] = [];
     const activeJobs = new Set<string>();
-    const retainedCompletedJobs = new Set<string>();
     mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
       const jobId = `validate-${sessionId}`;
       enqueueAttempts.push(jobId);
-      if (!activeJobs.has(jobId) && !retainedCompletedJobs.has(jobId)) {
+      if (!activeJobs.has(jobId)) {
         effectiveStarts.push(jobId);
         activeJobs.add(jobId);
       }
@@ -783,18 +783,19 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     };
 
     await handlers['POST /sessions/:id/finalize'](request, makeReply());
-    for (const jobId of activeJobs) retainedCompletedJobs.add(jobId);
-    activeJobs.clear();
     expect(JSON.parse(sharedSession.metadata_json)._hearloopValidationHandoff.state)
       .toBe('pending');
-    expect(retainedCompletedJobs).toEqual(new Set([`validate-${VALID_ID}`]));
+
+    sharedSession.metadata_json = writeLegacyValidationHandoff(
+      sharedSession.metadata_json,
+      { state: 'enqueued' }
+    );
+    activeJobs.clear();
 
     await handlers['POST /sessions/:id/finalize'](request, makeReply());
 
-    expect(enqueueAttempts).toEqual([
-      `validate-${VALID_ID}`,
-      `validate-${VALID_ID}`,
-    ]);
+    expect(enqueueAttempts).toEqual([`validate-${VALID_ID}`]);
     expect(effectiveStarts).toEqual([`validate-${VALID_ID}`]);
+    expect(activeJobs).toEqual(new Set());
   });
 });

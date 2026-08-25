@@ -78,6 +78,7 @@ jest.mock('../../lib/logger', () => ({
 
 import { publicRoutes } from '../public';
 import { UploadGrantError } from '../../lib/upload-grants';
+import { writeLegacyValidationHandoff } from '../../lib/session-capture-config';
 
 // Build a minimal Fastify-like mock that captures registered route handlers.
 function makeApp() {
@@ -1037,7 +1038,7 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     expect(mockValues).toHaveBeenCalledTimes(1);
   });
 
-  it('deduplicates retry after enqueue succeeds but the marker acknowledgement affects zero rows', async () => {
+  it('does not restart validation after worker acknowledgement and completed-job removal', async () => {
     const sharedSession = {
       id: 'session-1',
       partner_id: 'partner-1',
@@ -1058,7 +1059,7 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
         Object.assign(sharedSession, submittedSet);
         return { id: sharedSession.id };
       }
-      if (executeCount === 3 || executeCount === 5) {
+      if (executeCount >= 3) {
         return { ...sharedSession };
       }
       return persistedRecording;
@@ -1071,11 +1072,10 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     const enqueueAttempts: string[] = [];
     const effectiveStarts: string[] = [];
     const activeJobs = new Set<string>();
-    const retainedCompletedJobs = new Set<string>();
     mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
       const jobId = `validate-${sessionId}`;
       enqueueAttempts.push(jobId);
-      if (!activeJobs.has(jobId) && !retainedCompletedJobs.has(jobId)) {
+      if (!activeJobs.has(jobId)) {
         effectiveStarts.push(jobId);
         activeJobs.add(jobId);
       }
@@ -1092,16 +1092,20 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     };
 
     await handlers['POST /public/session/:token/finalize'](request, makeReply());
-    for (const jobId of activeJobs) retainedCompletedJobs.add(jobId);
-    activeJobs.clear();
     expect(JSON.parse(sharedSession.metadata_json)._hearloopValidationHandoff.state)
       .toBe('pending');
-    expect(retainedCompletedJobs).toEqual(new Set(['validate-session-1']));
+
+    sharedSession.metadata_json = writeLegacyValidationHandoff(
+      sharedSession.metadata_json,
+      { state: 'enqueued' }
+    );
+    activeJobs.clear();
 
     await handlers['POST /public/session/:token/finalize'](request, makeReply());
 
-    expect(enqueueAttempts).toEqual(['validate-session-1', 'validate-session-1']);
+    expect(enqueueAttempts).toEqual(['validate-session-1']);
     expect(effectiveStarts).toEqual(['validate-session-1']);
+    expect(activeJobs).toEqual(new Set());
   });
 
   it('enqueues the persisted prompt instead of caller-controlled finalize metadata', async () => {
