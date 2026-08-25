@@ -9,6 +9,7 @@ const mockExecuteTakeFirst = jest.fn();
 const mockExecuteInsert = jest.fn();
 const mockValues = jest.fn();
 const mockSet = jest.fn();
+const mockWhere = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
 const mockLookupPartnerByApiKey = jest.fn();
@@ -19,7 +20,10 @@ jest.mock('../../lib/db', () => ({
     selectFrom: jest.fn().mockReturnThis(),
     innerJoin: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
-    where: jest.fn().mockReturnThis(),
+    where: function (...args: unknown[]) {
+      mockWhere(...args);
+      return this;
+    },
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
     insertInto: jest.fn().mockReturnThis(),
     values: function (...args: unknown[]) {
@@ -332,6 +336,7 @@ describe('POST /public/capture/:linkToken/session — persisted capture authorit
   beforeEach(() => {
     mockExecuteInsert.mockReset().mockResolvedValue(undefined);
     mockValues.mockReset();
+    mockWhere.mockReset();
   });
 
   it('persists Partner consent defaults and Capture-link Target together', async () => {
@@ -459,6 +464,11 @@ describe('POST /public/capture/:linkToken/session — persisted capture authorit
 
     expect(reply.code).toHaveBeenCalledWith(404);
     expect(reply.send).toHaveBeenCalledWith({ error: 'capture_link_not_found' });
+    expect(mockWhere).toHaveBeenCalledWith(
+      'capture_links.token',
+      '=',
+      'unusable-capture-link-token'
+    );
     expect(mockValues).not.toHaveBeenCalled();
   });
 });
