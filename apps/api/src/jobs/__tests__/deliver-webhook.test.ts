@@ -20,7 +20,9 @@ jest.mock("crypto", () => ({
 
 // SSRF guard is out of scope for this ticket — no-op it.
 jest.mock("../../lib/assert-public-https-url", () => ({
-  assertPublicHttpsUrl: jest.fn(),
+  assertPublicHttpsUrl: jest.fn((url: string) => {
+    if (url.includes("blocked")) throw new Error("blocked webhook URL");
+  }),
 }));
 
 jest.mock("../../lib/logger", () => ({
@@ -148,6 +150,7 @@ jest.mock("../../lib/db", () => {
 // ---------------------------------------------------------------------------
 
 import { runDeliverWebhookJob } from "../deliver-webhook";
+import { assertPublicHttpsUrl } from "../../lib/assert-public-https-url";
 
 const PAYLOAD = {
   sessionId: "session-1",
@@ -221,5 +224,78 @@ describe("runDeliverWebhookJob — retry identity", () => {
     // proof the updates landed on the row, not on thin air.
     expect(mockState.delivery?.attempt_count).toBe(3);
     expect(mockState.delivery?.status).toBe("delivered");
+  });
+
+  it("does not fetch or write a delivery when the webhook URL is blocked", async () => {
+    mockState.partner = {
+      id: "partner-1",
+      webhook_url: "https://blocked.example.com/hook",
+    };
+    global.fetch = jest.fn() as any;
+
+    await expect(runDeliverWebhookJob(PAYLOAD)).rejects.toThrow(
+      "blocked webhook URL"
+    );
+
+    expect(assertPublicHttpsUrl).toHaveBeenCalledWith(
+      "https://blocked.example.com/hook"
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(mockState.delivery).toBeUndefined();
+  });
+
+  it("signs a fixed timestamp and body with the expected literal HMAC", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-01-02T03:04:05.000Z"));
+    global.fetch = jest.fn().mockResolvedValue({ status: 200 } as Response) as any;
+
+    try {
+      await runDeliverWebhookJob(PAYLOAD);
+    } finally {
+      jest.useRealTimers();
+    }
+
+    expect(fetchCallHeader(0, "X-Hearloop-Timestamp")).toBe("1767323045");
+    expect(fetchCallHeader(0, "X-Hearloop-Signature")).toBe(
+      "sha256=8cb8d5e0c6ff55b8b103f1c85dc64944598ebca8b561653c369f7076a0aaf765"
+    );
+  });
+
+  it("records an HTTP 500 response and rejects before attempt seven", async () => {
+    global.fetch = jest.fn().mockResolvedValue({ status: 500 } as Response) as any;
+
+    await expect(runDeliverWebhookJob(PAYLOAD)).rejects.toThrow(
+      "Webhook delivery failed: status=500"
+    );
+
+    expect(mockState.delivery).toMatchObject({
+      status: "failed",
+      attempt_count: 1,
+      response_code: 500,
+    });
+  });
+
+  it("marks attempt seven dead and resolves without requesting another retry", async () => {
+    mockState.delivery = {
+      id: "delivery-1",
+      event_id: "event-1",
+      partner_id: "partner-1",
+      session_id: "session-1",
+      event_type: "test.event",
+      payload_json: "{}",
+      status: "failed",
+      attempt_count: 6,
+      response_code: 500,
+      last_attempted_at: new Date("2026-01-01T00:00:00.000Z"),
+      created_at: new Date("2026-01-01T00:00:00.000Z"),
+    };
+    global.fetch = jest.fn().mockResolvedValue({ status: 500 } as Response) as any;
+
+    await expect(runDeliverWebhookJob(PAYLOAD)).resolves.toBeUndefined();
+
+    expect(mockState.delivery).toMatchObject({
+      status: "dead",
+      attempt_count: 7,
+      response_code: 500,
+    });
   });
 });

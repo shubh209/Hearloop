@@ -62,4 +62,10 @@ describe("sendUrgentAlert", () => {
     await sendUrgentAlert({ ...BASE, to: "  " });
     expect(mockSend).not.toHaveBeenCalled();
   });
+
+  it("propagates an SES client rejection", async () => {
+    mockSend.mockRejectedValueOnce(new Error("SES unavailable"));
+
+    await expect(sendUrgentAlert(BASE)).rejects.toThrow("SES unavailable");
+  });
 });

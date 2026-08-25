@@ -17,6 +17,7 @@ import IORedis from 'ioredis';
 import { db } from '../lib/db';
 import { sql } from 'kysely';
 import { getWaitingJobCounts } from '../lib/queue';
+import { createHealthSnapshotCache } from '../lib/health-snapshot-cache';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -249,7 +250,11 @@ const HEALTH_CACHE_TTL_MS = Number(
   process.env.HEALTH_CACHE_TTL_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 60_000)
 );
 
-let healthCache: { at: number; body: HealthResponse } | null = null;
+const healthCache = createHealthSnapshotCache({
+  ttlMs: HEALTH_CACHE_TTL_MS,
+  now: Date.now,
+  load: buildHealthBody,
+});
 
 /**
  * Registers GET /health/detailed. Public — no preHandler.
@@ -259,14 +264,7 @@ let healthCache: { at: number; body: HealthResponse } | null = null;
  */
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health/detailed', async (_req, reply) => {
-    const now = Date.now();
-
-    if (HEALTH_CACHE_TTL_MS > 0 && healthCache && now - healthCache.at < HEALTH_CACHE_TTL_MS) {
-      return reply.code(200).send(healthCache.body);
-    }
-
-    const body = await buildHealthBody();
-    healthCache = { at: now, body };
+    const body = await healthCache.get();
 
     return reply.code(200).send(body);
   });
