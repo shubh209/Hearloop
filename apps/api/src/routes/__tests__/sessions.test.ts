@@ -4,8 +4,13 @@
 // (ticket 006). All DB access is mocked so no real database is required.
 
 const mockExecuteTakeFirst = jest.fn();
+const mockExecute = jest.fn();
+const mockValues = jest.fn();
+const mockSet = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
+const mockEnqueueValidate = jest.fn();
+const mockEnqueueExpireSession = jest.fn();
 jest.mock('../../lib/db', () => ({
   db: {
     selectFrom: jest.fn().mockReturnThis(),
@@ -13,6 +18,18 @@ jest.mock('../../lib/db', () => ({
     selectAll: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
+    insertInto: jest.fn().mockReturnThis(),
+    values: function (...args: unknown[]) {
+      mockValues(...args);
+      return this;
+    },
+    onConflict: jest.fn().mockReturnThis(),
+    updateTable: jest.fn().mockReturnThis(),
+    set: function (...args: unknown[]) {
+      mockSet(...args);
+      return this;
+    },
+    execute: (...args: unknown[]) => mockExecute(...args),
   },
 }));
 
@@ -29,8 +46,8 @@ jest.mock('../../lib/upload-grants', () => ({
 }));
 
 jest.mock('../../lib/queue', () => ({
-  enqueueValidate: jest.fn(),
-  enqueueExpireSession: jest.fn(),
+  enqueueValidate: (...args: unknown[]) => mockEnqueueValidate(...args),
+  enqueueExpireSession: (...args: unknown[]) => mockEnqueueExpireSession(...args),
 }));
 
 import { sessionRoutes } from '../sessions';
@@ -76,6 +93,47 @@ const VERSIONED_RESPONSE = {
       'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
   },
 };
+
+describe('POST /sessions — authoritative capture metadata', () => {
+  beforeEach(() => {
+    mockExecute.mockReset().mockResolvedValue(undefined);
+    mockValues.mockReset();
+    mockEnqueueExpireSession.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('retains caller metadata without allowing reserved capture fields to be overridden', async () => {
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions'](
+      {
+        partner: { id: 'partner-1' },
+        body: {
+          promptText: 'Authoritative prompt',
+          consentRequired: true,
+          consentText: 'I consent.',
+          metadata: {
+            campaign: 'summer-service',
+            promptText: 'Caller override',
+            consentRequired: false,
+            target: { label: 'Caller target' },
+          },
+        },
+      },
+      reply
+    );
+
+    expect(JSON.parse(mockValues.mock.calls[0][0].metadata_json)).toEqual({
+      campaign: 'summer-service',
+      promptText: 'Authoritative prompt',
+      consentRequired: true,
+      consentText: 'I consent.',
+      target: null,
+    });
+    expect(reply.code).toHaveBeenCalledWith(201);
+  });
+});
 
 describe('POST /sessions/:id/upload-url — protocol dispatch', () => {
   beforeEach(() => {
@@ -250,6 +308,10 @@ describe('POST /sessions/:id/upload-url — protocol dispatch', () => {
 describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
   beforeEach(() => {
     mockExecuteTakeFirst.mockReset();
+    mockExecute.mockReset().mockResolvedValue(undefined);
+    mockValues.mockReset();
+    mockSet.mockReset();
+    mockEnqueueValidate.mockReset().mockResolvedValue(undefined);
   });
 
   it("rejects a storageKey that does not match this session's expected key", async () => {
@@ -277,5 +339,69 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     );
 
     expect(reply.code).toHaveBeenCalledWith(400);
+  });
+
+  it('rejects required consent before any persistence or Pipeline enqueue', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        body: {
+          storageKey: `recordings/${VALID_ID}/audio.webm`,
+          mimeType: 'audio/webm',
+          consentGiven: false,
+        },
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(400);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'consent_required' });
+    expect(mockValues).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockEnqueueValidate).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before persistence when consent authority is malformed', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: 'yes' }),
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /sessions/:id/finalize'](
+      {
+        params: { id: VALID_ID },
+        partner: { id: 'partner-1' },
+        body: {
+          storageKey: `recordings/${VALID_ID}/audio.webm`,
+          mimeType: 'audio/webm',
+          consentGiven: true,
+        },
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(500);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'invalid_session_config' });
+    expect(mockValues).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockEnqueueValidate).not.toHaveBeenCalled();
   });
 });

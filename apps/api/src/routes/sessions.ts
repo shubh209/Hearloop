@@ -9,6 +9,12 @@ import {
   issueVersionedUploadGrant,
   UploadGrantError,
 } from "../lib/upload-grants";
+import {
+  buildSessionMetadata,
+  InvalidSessionCaptureConfigError,
+  isFinalizeConsentValid,
+  readSessionCaptureConfig,
+} from "../lib/session-capture-config";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -48,9 +54,12 @@ export async function sessionRoutes(app: FastifyInstance) {
           failure_reason: null,
           external_event_id: body.externalEventId ?? null,
           max_duration_sec: body.maxDurationSec ?? 5,
-          metadata_json: body.metadata
-            ? JSON.stringify(body.metadata)
-            : null,
+          metadata_json: buildSessionMetadata({
+            metadata: body.metadata,
+            promptText: body.promptText,
+            consentRequired: body.consentRequired,
+            consentText: body.consentText,
+          }),
           expires_at: expiresAt,
           created_at: new Date(),
           updated_at: new Date(),
@@ -288,6 +297,20 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.code(409).send({ error: "invalid_session_state" });
       }
 
+      let captureConfig;
+      try {
+        captureConfig = readSessionCaptureConfig(session.metadata_json);
+      } catch (error) {
+        if (error instanceof InvalidSessionCaptureConfigError) {
+          return reply.code(500).send({ error: "invalid_session_config" });
+        }
+        throw error;
+      }
+
+      if (!isFinalizeConsentValid(captureConfig, body.consentGiven)) {
+        return reply.code(400).send({ error: "consent_required" });
+      }
+
       if (
         typeof body.mimeType !== "string" ||
         body.storageKey !== buildStorageKey(id, body.mimeType)
@@ -329,7 +352,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         storageKey: body.storageKey,
         mimeType: body.mimeType,
         languageHint: body.languageHint,
-        promptText: body.promptText,
+        promptText: captureConfig.promptText,
         maxDurationSec: session.max_duration_sec,
       });
 

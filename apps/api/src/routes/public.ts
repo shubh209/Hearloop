@@ -17,6 +17,12 @@ import {
   UploadGrantError,
 } from "../lib/upload-grants";
 import { claimSessionCreateToken } from "../lib/session-create-token";
+import {
+  buildSessionMetadata,
+  InvalidSessionCaptureConfigError,
+  isFinalizeConsentValid,
+  readSessionCaptureConfig,
+} from "../lib/session-capture-config";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -130,14 +136,12 @@ export async function publicRoutes(app: FastifyInstance) {
             public_token: sessionToken,
             status: "created",
             max_duration_sec: body.maxDurationSec ?? 5,
-            metadata_json: body.promptText
-              ? JSON.stringify({
-                  promptText: body.promptText,
-                  consentRequired: body.consentRequired ?? false,
-                  consentText: body.consentText,
-                  externalEventId: body.externalEventId,
-                })
-              : null,
+            metadata_json: buildSessionMetadata({
+              metadata: { externalEventId: body.externalEventId },
+              promptText: body.promptText,
+              consentRequired: body.consentRequired,
+              consentText: body.consentText,
+            }),
             external_event_id: body.externalEventId,
             expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
             created_at: now,
@@ -192,16 +196,22 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(410).send({ error: "session_expired" });
       }
 
-      const config = session.default_config_json
-        ? JSON.parse(session.default_config_json)
-        : {};
+      let config;
+      try {
+        config = readSessionCaptureConfig(session.metadata_json);
+      } catch (error) {
+        if (error instanceof InvalidSessionCaptureConfigError) {
+          return reply.code(500).send({ error: "invalid_session_config" });
+        }
+        throw error;
+      }
 
       return reply.send({
         sessionToken: token,
         status: session.status,
         maxDurationSec: session.max_duration_sec,
         promptText: config.promptText ?? null,
-        consentRequired: config.consentRequired ?? false,
+        consentRequired: config.consentRequired,
         consentText: config.consentText ?? null,
         // allowed_origins is stored comma-separated (see partner-me.ts /
         // partners.ts write paths) — parse it the same way every other
@@ -324,7 +334,14 @@ export async function publicRoutes(app: FastifyInstance) {
 
       const session = await db
         .selectFrom("sessions")
-        .select(["id", "partner_id", "status", "expires_at", "max_duration_sec"])
+        .select([
+          "id",
+          "partner_id",
+          "status",
+          "expires_at",
+          "max_duration_sec",
+          "metadata_json",
+        ])
         .where("public_token", "=", token)
         .executeTakeFirst();
 
@@ -343,6 +360,20 @@ export async function publicRoutes(app: FastifyInstance) {
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
         return reply.code(409).send({ error: "invalid_session_state" });
+      }
+
+      let captureConfig;
+      try {
+        captureConfig = readSessionCaptureConfig(session.metadata_json);
+      } catch (error) {
+        if (error instanceof InvalidSessionCaptureConfigError) {
+          return reply.code(500).send({ error: "invalid_session_config" });
+        }
+        throw error;
+      }
+
+      if (!isFinalizeConsentValid(captureConfig, body.consentGiven)) {
+        return reply.code(400).send({ error: "consent_required" });
       }
 
       if (
@@ -383,7 +414,7 @@ export async function publicRoutes(app: FastifyInstance) {
         storageKey: body.storageKey,
         mimeType: body.mimeType,
         languageHint: body.languageHint,
-        promptText: body.promptText,
+        promptText: captureConfig.promptText,
         maxDurationSec: session.max_duration_sec,
       });
 
@@ -424,6 +455,9 @@ export async function publicRoutes(app: FastifyInstance) {
       const sessionId = randomUUID();
       const sessionToken = randomUUID();
       const now = new Date();
+      if (link.target_label && !link.target_key) {
+        return reply.code(500).send({ error: "invalid_session_config" });
+      }
 
       await db
         .insertInto("sessions")
@@ -433,11 +467,11 @@ export async function publicRoutes(app: FastifyInstance) {
           public_token: sessionToken,
           status: "created",
           max_duration_sec: config.maxDurationSec ?? 5,
-          metadata_json: JSON.stringify({
+          metadata_json: buildSessionMetadata({
             promptText: config.promptText,
             consentRequired: config.consentRequired ?? false,
             consentText: config.consentText,
-            target: link.target_label
+            target: link.target_label && link.target_key
               ? {
                   label: link.target_label,
                   key: link.target_key,

@@ -7,10 +7,13 @@
 
 const mockExecuteTakeFirst = jest.fn();
 const mockExecuteInsert = jest.fn();
+const mockValues = jest.fn();
+const mockSet = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
 const mockLookupPartnerByApiKey = jest.fn();
 const mockClaimSessionCreateToken = jest.fn();
+const mockEnqueueValidate = jest.fn();
 jest.mock('../../lib/db', () => ({
   db: {
     selectFrom: jest.fn().mockReturnThis(),
@@ -19,7 +22,16 @@ jest.mock('../../lib/db', () => ({
     where: jest.fn().mockReturnThis(),
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
     insertInto: jest.fn().mockReturnThis(),
-    values: jest.fn().mockReturnThis(),
+    values: function (...args: unknown[]) {
+      mockValues(...args);
+      return this;
+    },
+    onConflict: jest.fn().mockReturnThis(),
+    updateTable: jest.fn().mockReturnThis(),
+    set: function (...args: unknown[]) {
+      mockSet(...args);
+      return this;
+    },
     execute: (...args: unknown[]) => mockExecuteInsert(...args),
   },
 }));
@@ -47,7 +59,7 @@ jest.mock('../../lib/upload-grants', () => ({
 }));
 
 jest.mock('../../lib/queue', () => ({
-  enqueueValidate: jest.fn(),
+  enqueueValidate: (...args: unknown[]) => mockEnqueueValidate(...args),
 }));
 
 jest.mock('../../lib/logger', () => ({
@@ -135,6 +147,7 @@ describe('POST /public/sessions — Session-create token claim boundary', () => 
   beforeEach(() => {
     mockExecuteTakeFirst.mockReset().mockResolvedValue(undefined);
     mockExecuteInsert.mockReset().mockResolvedValue(undefined);
+    mockValues.mockReset();
     mockClaimSessionCreateToken
       .mockReset()
       .mockResolvedValueOnce({ partnerId: 'partner-1' })
@@ -177,6 +190,29 @@ describe('POST /public/sessions — Session-create token claim boundary', () => 
     expect(winnerReply.code).toHaveBeenCalledWith(201);
     expect(loserReply.code).toHaveBeenCalledWith(401);
     expect(mockExecuteInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists prompt and consent authority even when no custom prompt exists', async () => {
+    mockClaimSessionCreateToken.mockReset().mockResolvedValue({ partnerId: 'partner-1' });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/sessions'](
+      {
+        headers: { authorization: 'Bearer single-use-token' },
+        body: { consentRequired: true, consentText: 'Audio processing consent.' },
+      },
+      reply
+    );
+
+    const insertedSession = mockValues.mock.calls[0][0];
+    expect(JSON.parse(insertedSession.metadata_json)).toEqual({
+      consentRequired: true,
+      consentText: 'Audio processing consent.',
+      target: null,
+    });
+    expect(reply.code).toHaveBeenCalledWith(201);
   });
 });
 
@@ -258,6 +294,77 @@ describe('GET /public/session/:token — allowed_origins parsing', () => {
       'https://a.example.com',
       'https://b.example.com',
     ]);
+  });
+
+  it('returns the persisted Session capture config instead of current Partner defaults', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      ...baseSessionRow,
+      metadata_json: JSON.stringify({
+        promptText: 'Persisted prompt',
+        consentRequired: true,
+        consentText: 'Persisted consent',
+      }),
+      default_config_json: JSON.stringify({
+        promptText: 'Changed Partner prompt',
+        consentRequired: false,
+      }),
+      allowed_origins: null,
+    });
+
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['GET /public/session/:token'](
+      { params: { token: 'tok-config' } },
+      reply
+    );
+
+    expect(reply.send).toHaveBeenCalledWith(expect.objectContaining({
+      promptText: 'Persisted prompt',
+      consentRequired: true,
+      consentText: 'Persisted consent',
+    }));
+  });
+});
+
+describe('POST /public/capture/:linkToken/session — persisted capture authority', () => {
+  beforeEach(() => {
+    mockExecuteInsert.mockReset().mockResolvedValue(undefined);
+    mockValues.mockReset();
+  });
+
+  it('persists Partner consent defaults and Capture-link Target together', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      partner_id: 'partner-1',
+      target_label: 'North Ave — Oil Change',
+      target_key: 'north-ave-oil-change',
+      active: true,
+      default_config_json: JSON.stringify({
+        promptText: 'How was the service?',
+        consentRequired: true,
+        consentText: 'I consent.',
+      }),
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/capture/:linkToken/session'](
+      { params: { linkToken: 'capture-link-token' } },
+      reply
+    );
+
+    expect(JSON.parse(mockValues.mock.calls[0][0].metadata_json)).toEqual({
+      promptText: 'How was the service?',
+      consentRequired: true,
+      consentText: 'I consent.',
+      target: {
+        label: 'North Ave — Oil Change',
+        key: 'north-ave-oil-change',
+        source: 'capture-link',
+      },
+    });
   });
 });
 
@@ -453,6 +560,10 @@ describe('POST /public/session/:token/upload-url — protocol dispatch', () => {
 describe('POST /public/session/:token/finalize — storageKey ownership check', () => {
   beforeEach(() => {
     mockExecuteTakeFirst.mockReset();
+    mockExecuteInsert.mockReset().mockResolvedValue(undefined);
+    mockValues.mockReset();
+    mockSet.mockReset();
+    mockEnqueueValidate.mockReset().mockResolvedValue(undefined);
   });
 
   it('rejects a storageKey that does not match this session\'s expected key', async () => {
@@ -480,5 +591,138 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     );
 
     expect(reply.code).toHaveBeenCalledWith(400);
+  });
+
+  it.each([undefined, false])(
+    'rejects missing or false consent before any persistence when consent is required (%s)',
+    async (consentGiven) => {
+      mockExecuteTakeFirst.mockResolvedValue({
+        id: 'session-1',
+        partner_id: 'partner-1',
+        status: 'opened',
+        expires_at: new Date(Date.now() + 60_000),
+        max_duration_sec: 5,
+        metadata_json: JSON.stringify({ consentRequired: true }),
+      });
+      const { app, handlers } = makeApp();
+      await publicRoutes(app);
+      const reply = makeReply();
+
+      await handlers['POST /public/session/:token/finalize'](
+        {
+          params: { token: 'tok-1' },
+          body: {
+            storageKey: 'recordings/session-1/audio.webm',
+            mimeType: 'audio/webm',
+            consentGiven,
+          },
+        },
+        reply
+      );
+
+      expect(reply.code).toHaveBeenCalledWith(400);
+      expect(reply.send).toHaveBeenCalledWith({ error: 'consent_required' });
+      expect(mockValues).not.toHaveBeenCalled();
+      expect(mockSet).not.toHaveBeenCalled();
+      expect(mockEnqueueValidate).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['required consent given', JSON.stringify({ consentRequired: true }), true],
+    ['consent not required', JSON.stringify({ consentRequired: false }), undefined],
+  ])('finalizes when %s', async (_caseName, metadataJson, consentGiven) => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: metadataJson,
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/session-1/audio.webm',
+          mimeType: 'audio/webm',
+          consentGiven,
+        },
+      },
+      reply
+    );
+
+    expect(mockValues).toHaveBeenCalledTimes(1);
+    expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({ status: 'submitted' }));
+    expect(mockEnqueueValidate).toHaveBeenCalledTimes(1);
+  });
+
+  it('enqueues the persisted prompt instead of caller-controlled finalize metadata', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({
+        promptText: 'Persisted capture prompt',
+        consentRequired: false,
+      }),
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/session-1/audio.webm',
+          mimeType: 'audio/webm',
+          promptText: 'Caller-controlled prompt',
+        },
+      },
+      reply
+    );
+
+    expect(mockEnqueueValidate).toHaveBeenCalledWith(expect.objectContaining({
+      promptText: 'Persisted capture prompt',
+    }));
+  });
+
+  it('fails closed before persistence when consent authority is malformed', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: '{',
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/session/:token/finalize'](
+      {
+        params: { token: 'tok-1' },
+        body: {
+          storageKey: 'recordings/session-1/audio.webm',
+          mimeType: 'audio/webm',
+          consentGiven: true,
+        },
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(500);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'invalid_session_config' });
+    expect(mockValues).not.toHaveBeenCalled();
+    expect(mockSet).not.toHaveBeenCalled();
+    expect(mockEnqueueValidate).not.toHaveBeenCalled();
   });
 });
