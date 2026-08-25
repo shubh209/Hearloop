@@ -954,10 +954,10 @@ export default function LandingPage() {
               <span class="kw">&lt;/script&gt;</span>`}} />
                 ) : (
                   <pre dangerouslySetInnerHTML={{__html: `<span class="cm">// Server-only: never expose this secret in browser code</span>
-                  <span class="kw">const</span> apiUrl = process.env.HEARLOOP_API_URL;
+                  <span class="cm">// Set HEARLOOP_SECRET_KEY in your server environment</span>
                   <span class="kw">const</span> secretKey = process.env.HEARLOOP_SECRET_KEY;
 
-                  <span class="kw">const</span> session = <span class="kw">await</span> <span class="fn">fetch</span>(apiUrl + <span class="str">"/v1/sessions"</span>, {
+                  <span class="kw">const</span> session = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">"https://18-223-189-193.nip.io/v1/sessions"</span>, {
                     method: <span class="str">"POST"</span>,
                     headers: {
                       <span class="str">"Authorization"</span>: <span class="str">"Bearer "</span> + secretKey,

@@ -8,8 +8,9 @@ test("the Node integration example uses the real Session endpoint from server-on
   fireEvent.click(screen.getByRole("button", { name: /node\.js/i }));
 
   expect(container).toHaveTextContent(/server-only: never expose this secret in browser code/i);
-  expect(container).toHaveTextContent(/HEARLOOP_API_URL/);
-  expect(container).toHaveTextContent(/\/v1\/sessions/);
+  expect(container).toHaveTextContent(/set HEARLOOP_SECRET_KEY in your server environment/i);
+  expect(container).toHaveTextContent(/https:\/\/18-223-189-193\.nip\.io\/v1\/sessions/);
   expect(container).toHaveTextContent(/HEARLOOP_SECRET_KEY/);
+  expect(container).not.toHaveTextContent(/HEARLOOP_API_URL/);
   expect(container).not.toHaveTextContent(/\/api\/feedback\/session/);
 });
