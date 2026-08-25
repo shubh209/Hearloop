@@ -25,6 +25,7 @@ import {
 import {
   orchestrateLegacyFinalize,
 } from "../lib/legacy-finalize-handoff";
+import { enqueueExpireSession } from "../lib/queue";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -130,6 +131,7 @@ export async function publicRoutes(app: FastifyInstance) {
 
         // Create session
         const now = new Date();
+        const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
         await db
           .insertInto("sessions")
           .values({
@@ -145,11 +147,13 @@ export async function publicRoutes(app: FastifyInstance) {
               consentText: body.consentText,
             }),
             external_event_id: body.externalEventId,
-            expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+            expires_at: expiresAt,
             created_at: now,
             updated_at: now,
           })
           .execute();
+
+        await enqueueExpireSession(sessionId, expiresAt.getTime() - Date.now());
 
         return reply.code(201).send({
           sessionId,
@@ -445,6 +449,7 @@ export async function publicRoutes(app: FastifyInstance) {
       const sessionId = randomUUID();
       const sessionToken = randomUUID();
       const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
       const hasTargetLabel = Boolean(link.target_label);
       const hasTargetKey = Boolean(link.target_key);
       if (hasTargetLabel !== hasTargetKey) {
@@ -472,11 +477,13 @@ export async function publicRoutes(app: FastifyInstance) {
               : null,
           }),
           external_event_id: null,
-          expires_at: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+          expires_at: expiresAt,
           created_at: now,
           updated_at: now,
         })
         .execute();
+
+      await enqueueExpireSession(sessionId, expiresAt.getTime() - Date.now());
 
       return reply.code(201).send({ sessionId, sessionToken });
     }

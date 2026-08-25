@@ -15,6 +15,7 @@ const mockIssueVersionedUploadGrant = jest.fn();
 const mockLookupPartnerByApiKey = jest.fn();
 const mockClaimSessionCreateToken = jest.fn();
 const mockEnqueueValidate = jest.fn();
+const mockEnqueueExpireSession = jest.fn();
 const mockTransactionExecute = jest.fn();
 jest.mock('../../lib/db', () => {
   const database = {
@@ -70,6 +71,7 @@ jest.mock('../../lib/upload-grants', () => ({
 
 jest.mock('../../lib/queue', () => ({
   enqueueValidate: (...args: unknown[]) => mockEnqueueValidate(...args),
+  enqueueExpireSession: (...args: unknown[]) => mockEnqueueExpireSession(...args),
 }));
 
 jest.mock('../../lib/logger', () => ({
@@ -159,6 +161,7 @@ describe('POST /public/sessions — Session-create token claim boundary', () => 
     mockExecuteTakeFirst.mockReset().mockResolvedValue(undefined);
     mockExecuteInsert.mockReset().mockResolvedValue(undefined);
     mockValues.mockReset();
+    mockEnqueueExpireSession.mockReset().mockResolvedValue(undefined);
     mockClaimSessionCreateToken
       .mockReset()
       .mockResolvedValueOnce({ partnerId: 'partner-1' })
@@ -224,6 +227,25 @@ describe('POST /public/sessions — Session-create token claim boundary', () => 
       target: null,
     });
     expect(reply.code).toHaveBeenCalledWith(201);
+  });
+
+  it('schedules expiry once using the persisted Session expiry', async () => {
+    mockClaimSessionCreateToken.mockReset().mockResolvedValue({ partnerId: 'partner-1' });
+    const now = Date.now();
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+
+    await handlers['POST /public/sessions'](
+      { headers: { authorization: 'Bearer single-use-token' }, body: {} },
+      makeReply()
+    );
+
+    const inserted = mockValues.mock.calls[0][0];
+    expect(mockEnqueueExpireSession).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueExpireSession.mock.calls[0][0]).toBe(inserted.id);
+    const delay = mockEnqueueExpireSession.mock.calls[0][1];
+    expect(delay).toBeGreaterThanOrEqual(inserted.expires_at.getTime() - Date.now());
+    expect(delay).toBeLessThanOrEqual(inserted.expires_at.getTime() - now);
   });
 });
 
@@ -344,6 +366,7 @@ describe('POST /public/capture/:linkToken/session — persisted capture authorit
     mockExecuteInsert.mockReset().mockResolvedValue(undefined);
     mockValues.mockReset();
     mockWhere.mockReset();
+    mockEnqueueExpireSession.mockReset().mockResolvedValue(undefined);
   });
 
   it('persists Partner consent defaults and Capture-link Target together', async () => {
@@ -377,6 +400,28 @@ describe('POST /public/capture/:linkToken/session — persisted capture authorit
         source: 'capture-link',
       },
     });
+  });
+
+  it('schedules expiry once using the persisted Capture-link Session expiry', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      partner_id: 'partner-1', target_label: null, target_key: null,
+      active: true, default_config_json: null,
+    });
+    const now = Date.now();
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+
+    await handlers['POST /public/capture/:linkToken/session'](
+      { params: { linkToken: 'capture-link-token' } },
+      makeReply()
+    );
+
+    const inserted = mockValues.mock.calls[0][0];
+    expect(mockEnqueueExpireSession).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueExpireSession.mock.calls[0][0]).toBe(inserted.id);
+    const delay = mockEnqueueExpireSession.mock.calls[0][1];
+    expect(delay).toBeGreaterThanOrEqual(inserted.expires_at.getTime() - Date.now());
+    expect(delay).toBeLessThanOrEqual(inserted.expires_at.getTime() - now);
   });
 
   it('rejects a Target key without a Target label before Session persistence', async () => {
