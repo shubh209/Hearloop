@@ -2,7 +2,10 @@
 
 import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { db } from "../lib/db";
-import { createApiKeyForPartner } from "../lib/create-api-key";
+import {
+  createApiKeyForPartner,
+  rotateApiKeyForPartner,
+} from "../lib/create-api-key";
 import { buildDashboardPayload } from "./partner-dashboard";
 import {
   PartnerSettingsValidationError,
@@ -130,7 +133,7 @@ export async function partnerMeRoutes(app: FastifyInstance) {
     { preHandler: auth },
     async (req: FastifyRequest, reply: FastifyReply) => {
       const partner = (req as any).partner;
-      const { rawKey, keyPrefix } = await createApiKeyForPartner(
+      const { rawKey, keyPrefix } = await rotateApiKeyForPartner(
         partner.id,
         "secret"
       );

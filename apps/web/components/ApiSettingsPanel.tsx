@@ -21,7 +21,10 @@ export function ApiSettingsPanel() {
   const generate = async () => {
     const res = await fetch("/api/partners/me/secret-keys", { method: "POST" });
     const data = await res.json();
-    if (res.ok) setSecretOnce(data.secretKey);
+    if (res.ok) {
+      setSecretOnce(data.secretKey);
+      setSecretPrefix(data.keyPrefix);
+    }
   };
 
   return (
@@ -29,7 +32,7 @@ export function ApiSettingsPanel() {
       <div className="ch">
         <div className="ct">API access (optional)</div>
         <button type="button" className="btn-primary" onClick={generate}>
-          Generate secret key
+          {secretPrefix ? "Rotate secret key" : "Generate secret key"}
         </button>
       </div>
       <p style={{ fontSize: 13, color: "var(--ink-3)", marginBottom: 14, lineHeight: 1.5 }}>
