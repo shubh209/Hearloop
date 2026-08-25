@@ -2,6 +2,8 @@ const mockDisconnect = jest.fn();
 const mockClose = jest.fn();
 const mockGetJobCounts = jest.fn();
 const mockAdd = jest.fn();
+const mockIsFailed = jest.fn();
+const mockRetry = jest.fn();
 
 jest.mock("ioredis", () =>
   jest.fn().mockImplementation(() => ({ disconnect: mockDisconnect }))
@@ -24,6 +26,12 @@ import {
 beforeEach(() => {
   jest.clearAllMocks();
   mockClose.mockResolvedValue(undefined);
+  mockIsFailed.mockResolvedValue(false);
+  mockRetry.mockResolvedValue(undefined);
+  mockAdd.mockResolvedValue({
+    isFailed: mockIsFailed,
+    retry: mockRetry,
+  });
   (Queue as unknown as jest.Mock).mockImplementation((name: string) => ({
     name,
     add: mockAdd,
@@ -34,8 +42,6 @@ beforeEach(() => {
 
 describe("Pipeline job retention", () => {
   it("keeps validation job removal bounded after worker-side durable acknowledgement", async () => {
-    mockAdd.mockResolvedValue(undefined);
-
     await enqueueValidate({
       sessionId: "session-1",
       storageKey: "recordings/session-1/audio.webm",
@@ -53,9 +59,22 @@ describe("Pipeline job retention", () => {
     );
   });
 
-  it("does not apply permanent retention to downstream queues", async () => {
-    mockAdd.mockResolvedValue(undefined);
+  it("retries an existing failed validation job before resolving the handoff", async () => {
+    mockIsFailed.mockResolvedValue(true);
 
+    await enqueueValidate({
+      sessionId: "session-1",
+      storageKey: "recordings/session-1/audio.webm",
+      mimeType: "audio/webm",
+    });
+
+    expect(mockRetry).toHaveBeenCalledWith("failed");
+    expect(mockIsFailed.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRetry.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("does not apply permanent retention to downstream queues", async () => {
     await enqueueTranscribe({
       sessionId: "session-1",
       storageKey: "recordings/session-1/audio.webm",

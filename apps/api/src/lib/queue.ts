@@ -141,10 +141,10 @@ async function enqueue(
     delay?: number;
     jobOptions?: JobsOptions;
   } = {}
-): Promise<void> {
-  await withQueue(jobName, async (queue) => {
+): Promise<Job> {
+  return withQueue(jobName, async (queue) => {
     const { jobOptions, ...enqueueOpts } = options;
-    await queue.add(jobName, jobData, {
+    return queue.add(jobName, jobData, {
       ...DEFAULT_JOB_OPTIONS,
       ...enqueueOpts,
       ...jobOptions,
@@ -195,11 +195,14 @@ export async function enqueueValidate(payload: {
   promptText?: string;
   maxDurationSec?: number;
 }): Promise<void> {
-  await enqueue("validate-recording", payload as Record<string, unknown>, {
+  const job = await enqueue("validate-recording", payload as Record<string, unknown>, {
     jobId: `validate-${payload.sessionId}`,
     attempts: 2,
     backoff: { type: "exponential", delay: 1000 },
   });
+  if (await job.isFailed()) {
+    await job.retry("failed");
+  }
 }
 
 export async function enqueueTranscribe(payload: {
