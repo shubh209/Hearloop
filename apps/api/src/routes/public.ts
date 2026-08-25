@@ -455,7 +455,9 @@ export async function publicRoutes(app: FastifyInstance) {
       const sessionId = randomUUID();
       const sessionToken = randomUUID();
       const now = new Date();
-      if (link.target_label && !link.target_key) {
+      const hasTargetLabel = Boolean(link.target_label);
+      const hasTargetKey = Boolean(link.target_key);
+      if (hasTargetLabel !== hasTargetKey) {
         return reply.code(500).send({ error: "invalid_session_config" });
       }
 

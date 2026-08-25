@@ -366,6 +366,28 @@ describe('POST /public/capture/:linkToken/session — persisted capture authorit
       },
     });
   });
+
+  it('rejects a Target key without a Target label before Session persistence', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      partner_id: 'partner-1',
+      target_label: null,
+      target_key: 'orphaned-target-key',
+      active: true,
+      default_config_json: null,
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/capture/:linkToken/session'](
+      { params: { linkToken: 'capture-link-token' } },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(500);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'invalid_session_config' });
+    expect(mockValues).not.toHaveBeenCalled();
+  });
 });
 
 const VERSIONED_BODY = {
