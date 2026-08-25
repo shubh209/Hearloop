@@ -388,6 +388,79 @@ describe('POST /public/capture/:linkToken/session — persisted capture authorit
     expect(reply.send).toHaveBeenCalledWith({ error: 'invalid_session_config' });
     expect(mockValues).not.toHaveBeenCalled();
   });
+
+  it('mints fresh Sessions with stable trusted Partner and Target attribution', async () => {
+    mockExecuteTakeFirst.mockResolvedValue({
+      partner_id: 'partner-a',
+      target_label: 'North Ave — Oil Change',
+      target_key: 'north-ave-oil-change',
+      active: true,
+      default_config_json: null,
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const firstReply = makeReply();
+    const secondReply = makeReply();
+
+    await handlers['POST /public/capture/:linkToken/session'](
+      { params: { linkToken: 'stable-capture-link-token' } },
+      firstReply
+    );
+    await handlers['POST /public/capture/:linkToken/session'](
+      { params: { linkToken: 'stable-capture-link-token' } },
+      secondReply
+    );
+
+    const first = firstReply.send.mock.calls[0][0];
+    const second = secondReply.send.mock.calls[0][0];
+    expect(firstReply.code).toHaveBeenCalledWith(201);
+    expect(secondReply.code).toHaveBeenCalledWith(201);
+    expect(first.sessionId).not.toBe(second.sessionId);
+    expect(first.sessionToken).not.toBe(second.sessionToken);
+    expect(mockValues.mock.calls.map(([session]) => session.partner_id)).toEqual([
+      'partner-a',
+      'partner-a',
+    ]);
+    expect(
+      mockValues.mock.calls.map(([session]) => JSON.parse(session.metadata_json).target)
+    ).toEqual([
+      {
+        label: 'North Ave — Oil Change',
+        key: 'north-ave-oil-change',
+        source: 'capture-link',
+      },
+      {
+        label: 'North Ave — Oil Change',
+        key: 'north-ave-oil-change',
+        source: 'capture-link',
+      },
+    ]);
+  });
+
+  it.each([
+    ['malformed', undefined],
+    ['deactivated', {
+      partner_id: 'partner-a',
+      target_label: null,
+      target_key: null,
+      active: false,
+      default_config_json: null,
+    }],
+  ])('returns the same 404 for a %s Capture-link token', async (_caseName, row) => {
+    mockExecuteTakeFirst.mockResolvedValue(row);
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/capture/:linkToken/session'](
+      { params: { linkToken: 'unusable-capture-link-token' } },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(404);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'capture_link_not_found' });
+    expect(mockValues).not.toHaveBeenCalled();
+  });
 });
 
 const VERSIONED_BODY = {
