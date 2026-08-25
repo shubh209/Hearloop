@@ -4,8 +4,8 @@
 - Specification: `docs/superpowers/specs/2026-08-24-released-workflow-verification-design.md`
 - Plan: `docs/superpowers/plans/2026-08-24-released-workflow-verification.md`
 - Diff base: `eab2e42`
-- Evidence HEAD before the uncommitted Task 11 files: `6cc5b85ba3727078c6acce7583978ad8bea677a9`
-- Final reviewed HEAD: pending the controller's Task 11 commit and whole-issue review; this worker was explicitly instructed not to commit
+- Evidence HEAD before Task 11: `6cc5b85ba3727078c6acce7583978ad8bea677a9`
+- Final reviewed implementation HEAD: `af1eeb8`
 - State: implemented, not released
 
 ## Controlled workflow evidence
@@ -84,6 +84,7 @@ The implementation ledger records the scoped review evidence. Fixing commits:
 - Session expiry scheduling: `d2e44eb`
 - All-Session dashboard aggregation: `01448df`
 - Delivery and health safety gaps: `6cc5b85`
+- Release-blocking CI, controlled workflow, and real finalize/webhook evidence: `0696da2`, `af1eeb8`
 
 Rejected hypotheses, with evidence:
 
