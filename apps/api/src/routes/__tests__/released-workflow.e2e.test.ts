@@ -1,4 +1,4 @@
-import { createHmac as mockCreateHmac } from "crypto";
+import { createHmac } from "crypto";
 
 type Row = Record<string, any>;
 
@@ -8,8 +8,9 @@ const mockState: Record<string, Row[]> = {
   sessions: [],
   recordings: [],
   analyses: [],
+  webhook_deliveries: [],
 };
-const mockWebhookEvents: Array<{ body: string; signature: string }> = [];
+const mockWebhookRequests: Array<{ body: string; headers: Record<string, string> }> = [];
 const mockUrgentAlerts: Row[] = [];
 
 function rowsFor(table: string): Row[] {
@@ -128,13 +129,17 @@ function mockInsertQuery(table: string) {
   return query;
 }
 
-jest.mock("../../lib/db", () => ({
-  db: {
+jest.mock("../../lib/db", () => {
+  const db = {
     selectFrom: jest.fn((table: string) => mockSelectQuery(table)),
     updateTable: jest.fn((table: string) => mockUpdateQuery(table)),
     insertInto: jest.fn((table: string) => mockInsertQuery(table)),
-  },
-}));
+    transaction: jest.fn(() => ({
+      execute: (callback: (trx: Row) => unknown) => callback(db),
+    })),
+  };
+  return { db };
+});
 jest.mock("../../lib/logger", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
   jobLogger: () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }),
@@ -181,43 +186,13 @@ jest.mock("../../lib/send-urgent-alert", () => ({
 let mockRunValidate: (payload: Row) => Promise<void>;
 let mockRunTranscribe: (payload: Row) => Promise<void>;
 let mockRunAnalyze: (payload: Row) => Promise<void>;
+let mockRunWebhook: (payload: Row) => Promise<void>;
 jest.mock("../../lib/queue", () => ({
   enqueueExpireSession: async () => undefined,
   enqueueValidate: async (payload: Row) => mockRunValidate(payload),
   enqueueTranscribe: async (payload: Row) => mockRunTranscribe(payload),
   enqueueAnalyze: async (payload: Row) => mockRunAnalyze(payload),
-  enqueueWebhook: async (payload: Row) => {
-    const body = JSON.stringify(payload);
-    mockWebhookEvents.push({
-      body,
-      signature: `sha256=${mockCreateHmac("sha256", "controlled-secret").update(body).digest("hex")}`,
-    });
-  },
-}));
-
-jest.mock("../../lib/legacy-finalize-handoff", () => ({
-  acknowledgeLegacyValidationHandoff: async () => undefined,
-  orchestrateLegacyFinalize: async ({ session, recording, languageHint }: Row) => {
-    mockState.recordings.push({
-      id: "recording-1",
-      session_id: session.id,
-      storage_key: recording.storageKey,
-      mime_type: recording.mimeType,
-      duration_ms: recording.durationMs ?? null,
-      size_bytes: recording.sizeBytes ?? 0,
-      sha256_hash: recording.sha256Hash ?? "",
-      created_at: new Date(),
-    });
-    Object.assign(mockState.sessions.find((row) => row.id === session.id)!, { status: "submitted" });
-    await mockRunValidate({
-      sessionId: session.id,
-      storageKey: recording.storageKey,
-      mimeType: recording.mimeType,
-      languageHint,
-      maxDurationSec: session.max_duration_sec,
-    });
-    return { sessionId: session.id, status: "submitted" };
-  },
+  enqueueWebhook: async (payload: Row) => mockRunWebhook(payload),
 }));
 
 import Fastify from "fastify";
@@ -227,15 +202,25 @@ import { partnerMeRoutes } from "../partner-me";
 import { runValidateRecordingJob } from "../../jobs/validate-recording";
 import { runTranscribeJob } from "../../jobs/transcribe";
 import { runAnalyzeJob } from "../../jobs/analyze";
+import { runDeliverWebhookJob } from "../../jobs/deliver-webhook";
 
 describe("released legacy workflow", () => {
   it("carries a Capture-link Target through controlled processing and Partner delivery", async () => {
     mockRunValidate = runValidateRecordingJob;
     mockRunTranscribe = runTranscribeJob;
     mockRunAnalyze = runAnalyzeJob;
+    mockRunWebhook = runDeliverWebhookJob;
     Object.values(mockState).forEach((rows) => rows.splice(0));
-    mockWebhookEvents.splice(0);
+    mockWebhookRequests.splice(0);
     mockUrgentAlerts.splice(0);
+    process.env.WEBHOOK_SIGNING_SECRET = "controlled-secret";
+    global.fetch = jest.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      mockWebhookRequests.push({
+        body: String(init?.body),
+        headers: init?.headers as Record<string, string>,
+      });
+      return { status: 204 } as Response;
+    }) as typeof fetch;
     mockState.partners.push({
       id: "partner-1",
       name: "Northside Auto",
@@ -327,6 +312,17 @@ describe("released legacy workflow", () => {
       key: "north-ave-oil-change",
       source: "capture-link",
     });
+    expect(JSON.parse(session.metadata_json)._hearloopValidationHandoff).toEqual({
+      state: "enqueued",
+      languageHint: "en",
+    });
+    expect(mockState.recordings).toEqual([
+      expect.objectContaining({
+        session_id: minted.sessionId,
+        storage_key: grant.storageKey,
+        mime_type: "audio/webm",
+      }),
+    ]);
 
     const dashboard = await app.inject({
       method: "GET",
@@ -340,8 +336,23 @@ describe("released legacy workflow", () => {
         urgency: "urgent",
       }],
     });
-    expect(mockWebhookEvents).toHaveLength(1);
-    expect(mockWebhookEvents[0].signature).toMatch(/^sha256=[0-9a-f]{64}$/);
+    expect(mockWebhookRequests).toHaveLength(1);
+    const webhook = mockWebhookRequests[0];
+    const timestamp = webhook.headers["X-Hearloop-Timestamp"];
+    expect(webhook.headers["X-Hearloop-Signature"]).toBe(
+      `sha256=${createHmac("sha256", "controlled-secret")
+        .update(`${timestamp}.${webhook.body}`)
+        .digest("hex")}`
+    );
+    expect(mockState.webhook_deliveries).toEqual([
+      expect.objectContaining({
+        session_id: minted.sessionId,
+        event_type: "session.completed",
+        status: "delivered",
+        attempt_count: 1,
+        response_code: 204,
+      }),
+    ]);
     expect(mockUrgentAlerts).toEqual([
       expect.objectContaining({
         to: "owner@example.com",
