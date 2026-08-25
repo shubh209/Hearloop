@@ -1037,6 +1037,73 @@ describe('POST /public/session/:token/finalize — storageKey ownership check', 
     expect(mockValues).toHaveBeenCalledTimes(1);
   });
 
+  it('deduplicates retry after enqueue succeeds but the marker acknowledgement affects zero rows', async () => {
+    const sharedSession = {
+      id: 'session-1',
+      partner_id: 'partner-1',
+      status: 'opened',
+      expires_at: new Date(Date.now() + 60_000),
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    };
+    let persistedRecording: Record<string, unknown> | undefined;
+    let executeCount = 0;
+    mockExecuteTakeFirst.mockImplementation(async () => {
+      executeCount += 1;
+      if (executeCount === 1) return { ...sharedSession };
+      if (executeCount === 2) {
+        const submittedSet = mockSet.mock.calls.find(
+          ([value]) => value.status === 'submitted'
+        )?.[0];
+        Object.assign(sharedSession, submittedSet);
+        return { id: sharedSession.id };
+      }
+      if (executeCount === 3 || executeCount === 5) {
+        return { ...sharedSession };
+      }
+      return persistedRecording;
+    });
+    mockExecuteInsert.mockImplementation(async () => {
+      const value = mockValues.mock.calls.at(-1)?.[0];
+      if (value?.session_id) persistedRecording = value;
+      return { numUpdatedRows: 0n };
+    });
+    const enqueueAttempts: string[] = [];
+    const effectiveStarts: string[] = [];
+    const activeJobs = new Set<string>();
+    const retainedCompletedJobs = new Set<string>();
+    mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
+      const jobId = `validate-${sessionId}`;
+      enqueueAttempts.push(jobId);
+      if (!activeJobs.has(jobId) && !retainedCompletedJobs.has(jobId)) {
+        effectiveStarts.push(jobId);
+        activeJobs.add(jobId);
+      }
+    });
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const request = {
+      params: { token: 'tok-1' },
+      body: {
+        storageKey: 'recordings/session-1/audio.webm',
+        mimeType: 'audio/webm',
+        consentGiven: true,
+      },
+    };
+
+    await handlers['POST /public/session/:token/finalize'](request, makeReply());
+    for (const jobId of activeJobs) retainedCompletedJobs.add(jobId);
+    activeJobs.clear();
+    expect(JSON.parse(sharedSession.metadata_json)._hearloopValidationHandoff.state)
+      .toBe('pending');
+    expect(retainedCompletedJobs).toEqual(new Set(['validate-session-1']));
+
+    await handlers['POST /public/session/:token/finalize'](request, makeReply());
+
+    expect(enqueueAttempts).toEqual(['validate-session-1', 'validate-session-1']);
+    expect(effectiveStarts).toEqual(['validate-session-1']);
+  });
+
   it('enqueues the persisted prompt instead of caller-controlled finalize metadata', async () => {
     mockExecuteTakeFirst.mockResolvedValue({
       id: 'session-1',

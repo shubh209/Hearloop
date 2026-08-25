@@ -23,8 +23,7 @@ import {
   readSessionCaptureConfig,
 } from "../lib/session-capture-config";
 import {
-  claimLegacyFinalize,
-  deliverPendingLegacyValidation,
+  orchestrateLegacyFinalize,
 } from "../lib/legacy-finalize-handoff";
 
 export async function publicRoutes(app: FastifyInstance) {
@@ -335,18 +334,20 @@ export async function publicRoutes(app: FastifyInstance) {
         promptText?: string;
       };
 
-      const session = await db
-        .selectFrom("sessions")
-        .select([
-          "id",
-          "partner_id",
-          "status",
-          "expires_at",
-          "max_duration_sec",
-          "metadata_json",
-        ])
-        .where("public_token", "=", token)
-        .executeTakeFirst();
+      const readScopedSession = () =>
+        db
+          .selectFrom("sessions")
+          .select([
+            "id",
+            "partner_id",
+            "status",
+            "expires_at",
+            "max_duration_sec",
+            "metadata_json",
+          ])
+          .where("public_token", "=", token)
+          .executeTakeFirst();
+      const session = await readScopedSession();
 
       if (!session) {
         return reply.code(404).send({ error: "session_not_found" });
@@ -356,24 +357,15 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(410).send({ error: "session_expired" });
       }
 
-      if (session.status === "processing") {
-        return reply.send({ sessionId: session.id, status: session.status });
-      }
-
-      if (session.status === "submitted") {
-        await deliverPendingLegacyValidation(session);
-        const durableSession = await db
-          .selectFrom("sessions")
-          .select(["id", "status"])
-          .where("public_token", "=", token)
-          .executeTakeFirst();
-        if (!durableSession) {
+      if (session.status === "processing" || session.status === "submitted") {
+        const result = await orchestrateLegacyFinalize({
+          session,
+          readScopedSession,
+        });
+        if (!result) {
           return reply.code(404).send({ error: "session_not_found" });
         }
-        return reply.send({
-          sessionId: durableSession.id,
-          status: durableSession.status,
-        });
+        return reply.send(result);
       }
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
@@ -401,61 +393,22 @@ export async function publicRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "storage_key_mismatch" });
       }
 
-      const claim = await claimLegacyFinalize(
+      const result = await orchestrateLegacyFinalize({
         session,
-        {
+        readScopedSession,
+        recording: {
           storageKey: body.storageKey,
           mimeType: body.mimeType,
           durationMs: body.durationMs,
           sizeBytes: body.sizeBytes,
           sha256Hash: body.sha256Hash,
         },
-        body.languageHint
-      );
-
-      if (claim.claimed) {
-        await deliverPendingLegacyValidation(
-          {
-            ...session,
-            metadata_json: claim.pendingMetadata,
-          },
-          {
-            storageKey: body.storageKey,
-            mimeType: body.mimeType,
-          }
-        );
-        return reply.send({ sessionId: session.id, status: "submitted" });
-      }
-
-      const durableSession = await db
-        .selectFrom("sessions")
-        .select(["id", "status", "metadata_json", "max_duration_sec"])
-        .where("public_token", "=", token)
-        .executeTakeFirst();
-      if (!durableSession) {
-        return reply.code(404).send({ error: "session_not_found" });
-      }
-      if (durableSession.status === "submitted") {
-        await deliverPendingLegacyValidation(durableSession);
-      } else {
-        return reply.send({
-          sessionId: durableSession.id,
-          status: durableSession.status,
-        });
-      }
-      const latestSession = await db
-        .selectFrom("sessions")
-        .select(["id", "status"])
-        .where("public_token", "=", token)
-        .executeTakeFirst();
-      if (!latestSession) {
-        return reply.code(404).send({ error: "session_not_found" });
-      }
-
-      return reply.send({
-        sessionId: latestSession.id,
-        status: latestSession.status,
+        languageHint: body.languageHint,
       });
+      if (!result) {
+        return reply.code(404).send({ error: "session_not_found" });
+      }
+      return reply.send(result);
     }
   );
 

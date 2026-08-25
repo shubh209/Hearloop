@@ -727,4 +727,74 @@ describe('POST /sessions/:id/finalize — storageKey ownership check', () => {
     expect(mockEnqueueValidate).toHaveBeenCalledTimes(2);
     expect(mockValues).toHaveBeenCalledTimes(1);
   });
+
+  it('deduplicates retry after enqueue succeeds but the marker acknowledgement affects zero rows', async () => {
+    const sharedSession = {
+      id: VALID_ID,
+      partner_id: 'partner-1',
+      status: 'opened',
+      max_duration_sec: 5,
+      metadata_json: JSON.stringify({ consentRequired: true }),
+    };
+    let persistedRecording: Record<string, unknown> | undefined;
+    let executeCount = 0;
+    mockExecuteTakeFirst.mockImplementation(async () => {
+      executeCount += 1;
+      if (executeCount === 1) return { ...sharedSession };
+      if (executeCount === 2) {
+        const submittedSet = mockSet.mock.calls.find(
+          ([value]) => value.status === 'submitted'
+        )?.[0];
+        Object.assign(sharedSession, submittedSet);
+        return { id: sharedSession.id };
+      }
+      if (executeCount === 3 || executeCount === 5) {
+        return { ...sharedSession };
+      }
+      return persistedRecording;
+    });
+    mockExecute.mockImplementation(async () => {
+      const value = mockValues.mock.calls.at(-1)?.[0];
+      if (value?.session_id) persistedRecording = value;
+      return { numUpdatedRows: 0n };
+    });
+    const enqueueAttempts: string[] = [];
+    const effectiveStarts: string[] = [];
+    const activeJobs = new Set<string>();
+    const retainedCompletedJobs = new Set<string>();
+    mockEnqueueValidate.mockImplementation(async ({ sessionId }) => {
+      const jobId = `validate-${sessionId}`;
+      enqueueAttempts.push(jobId);
+      if (!activeJobs.has(jobId) && !retainedCompletedJobs.has(jobId)) {
+        effectiveStarts.push(jobId);
+        activeJobs.add(jobId);
+      }
+    });
+    const { app, handlers } = makeApp();
+    await sessionRoutes(app);
+    const request = {
+      params: { id: VALID_ID },
+      partner: { id: 'partner-1' },
+      body: {
+        storageKey: `recordings/${VALID_ID}/audio.webm`,
+        mimeType: 'audio/webm',
+        consentGiven: true,
+      },
+    };
+
+    await handlers['POST /sessions/:id/finalize'](request, makeReply());
+    for (const jobId of activeJobs) retainedCompletedJobs.add(jobId);
+    activeJobs.clear();
+    expect(JSON.parse(sharedSession.metadata_json)._hearloopValidationHandoff.state)
+      .toBe('pending');
+    expect(retainedCompletedJobs).toEqual(new Set([`validate-${VALID_ID}`]));
+
+    await handlers['POST /sessions/:id/finalize'](request, makeReply());
+
+    expect(enqueueAttempts).toEqual([
+      `validate-${VALID_ID}`,
+      `validate-${VALID_ID}`,
+    ]);
+    expect(effectiveStarts).toEqual([`validate-${VALID_ID}`]);
+  });
 });

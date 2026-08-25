@@ -11,6 +11,7 @@ const ACCEPTED_FINALIZE_STATES = ["opened", "recording", "uploaded"] as const;
 
 type LegacyFinalizeSession = {
   id: string;
+  status: string;
   metadata_json: string | null;
   max_duration_sec: number;
 };
@@ -23,7 +24,59 @@ type LegacyRecordingInput = {
   sha256Hash?: string;
 };
 
-export async function claimLegacyFinalize(
+type LegacyFinalizeResult = {
+  sessionId: string;
+  status: string;
+};
+
+type ReadScopedSession = () => Promise<LegacyFinalizeSession | undefined>;
+
+export async function orchestrateLegacyFinalize({
+  session,
+  readScopedSession,
+  recording,
+  languageHint,
+}: {
+  session: LegacyFinalizeSession;
+  readScopedSession: ReadScopedSession;
+  recording?: LegacyRecordingInput;
+  languageHint?: string;
+}): Promise<LegacyFinalizeResult | null> {
+  if (session.status === "processing") {
+    return { sessionId: session.id, status: session.status };
+  }
+
+  if (session.status === "submitted") {
+    await deliverPendingLegacyValidation(session);
+    return toResult(await readScopedSession());
+  }
+
+  if (!recording) {
+    throw new Error("Accepted legacy finalize requires Recording metadata");
+  }
+
+  const claim = await claimLegacyFinalize(session, recording, languageHint);
+  if (claim.claimed) {
+    await deliverPendingLegacyValidation(
+      { ...session, metadata_json: claim.pendingMetadata },
+      recording
+    );
+    return { sessionId: session.id, status: "submitted" };
+  }
+
+  const durableSession = await readScopedSession();
+  if (!durableSession) {
+    return null;
+  }
+  if (durableSession.status !== "submitted") {
+    return toResult(durableSession);
+  }
+
+  await deliverPendingLegacyValidation(durableSession);
+  return toResult(await readScopedSession());
+}
+
+async function claimLegacyFinalize(
   session: LegacyFinalizeSession,
   recording: LegacyRecordingInput,
   languageHint?: string
@@ -74,7 +127,7 @@ export async function claimLegacyFinalize(
   });
 }
 
-export async function deliverPendingLegacyValidation(
+async function deliverPendingLegacyValidation(
   session: LegacyFinalizeSession,
   persistedRecording?: Pick<LegacyRecordingInput, "storageKey" | "mimeType">
 ): Promise<boolean> {
@@ -120,4 +173,12 @@ export async function deliverPendingLegacyValidation(
     .execute();
 
   return true;
+}
+
+function toResult(
+  session: LegacyFinalizeSession | undefined
+): LegacyFinalizeResult | null {
+  return session
+    ? { sessionId: session.id, status: session.status }
+    : null;
 }

@@ -16,8 +16,7 @@ import {
   readSessionCaptureConfig,
 } from "../lib/session-capture-config";
 import {
-  claimLegacyFinalize,
-  deliverPendingLegacyValidation,
+  orchestrateLegacyFinalize,
 } from "../lib/legacy-finalize-handoff";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -281,33 +280,28 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "invalid_id" });
       }
 
-      const session = await db
-        .selectFrom("sessions")
-        .selectAll()
-        .where("id", "=", id)
-        .where("partner_id", "=", partner.id)
-        .executeTakeFirst();
+      const readScopedSession = () =>
+        db
+          .selectFrom("sessions")
+          .selectAll()
+          .where("id", "=", id)
+          .where("partner_id", "=", partner.id)
+          .executeTakeFirst();
+      const session = await readScopedSession();
 
       if (!session) {
         return reply.code(404).send({ error: "session_not_found" });
       }
 
-      if (session.status === "processing") {
-        return reply.send({ sessionId: id, status: session.status });
-      }
-
-      if (session.status === "submitted") {
-        await deliverPendingLegacyValidation(session);
-        const durableSession = await db
-          .selectFrom("sessions")
-          .select(["id", "status"])
-          .where("id", "=", id)
-          .where("partner_id", "=", partner.id)
-          .executeTakeFirst();
-        if (!durableSession) {
+      if (session.status === "processing" || session.status === "submitted") {
+        const result = await orchestrateLegacyFinalize({
+          session,
+          readScopedSession,
+        });
+        if (!result) {
           return reply.code(404).send({ error: "session_not_found" });
         }
-        return reply.send({ sessionId: id, status: durableSession.status });
+        return reply.send(result);
       }
 
       if (!["opened", "recording", "uploaded"].includes(session.status)) {
@@ -335,57 +329,22 @@ export async function sessionRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "storage_key_mismatch" });
       }
 
-      const claim = await claimLegacyFinalize(
+      const result = await orchestrateLegacyFinalize({
         session,
-        {
+        readScopedSession,
+        recording: {
           storageKey: body.storageKey,
           mimeType: body.mimeType,
           durationMs: body.durationMs,
           sizeBytes: body.sizeBytes,
           sha256Hash: body.sha256Hash,
         },
-        body.languageHint
-      );
-
-      if (claim.claimed) {
-        await deliverPendingLegacyValidation(
-          {
-            ...session,
-            metadata_json: claim.pendingMetadata,
-          },
-          {
-            storageKey: body.storageKey,
-            mimeType: body.mimeType,
-          }
-        );
-        return reply.send({ sessionId: id, status: "submitted" });
-      }
-
-      const durableSession = await db
-        .selectFrom("sessions")
-        .select(["id", "status", "metadata_json", "max_duration_sec"])
-        .where("id", "=", id)
-        .where("partner_id", "=", partner.id)
-        .executeTakeFirst();
-      if (!durableSession) {
+        languageHint: body.languageHint,
+      });
+      if (!result) {
         return reply.code(404).send({ error: "session_not_found" });
       }
-      if (durableSession.status === "submitted") {
-        await deliverPendingLegacyValidation(durableSession);
-      } else {
-        return reply.send({ sessionId: id, status: durableSession.status });
-      }
-      const latestSession = await db
-        .selectFrom("sessions")
-        .select(["id", "status"])
-        .where("id", "=", id)
-        .where("partner_id", "=", partner.id)
-        .executeTakeFirst();
-      if (!latestSession) {
-        return reply.code(404).send({ error: "session_not_found" });
-      }
-
-      return reply.send({ sessionId: id, status: latestSession.status });
+      return reply.send(result);
     }
   );
 

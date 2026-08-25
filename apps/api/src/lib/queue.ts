@@ -199,6 +199,13 @@ export async function enqueueValidate(payload: {
     jobId: `validate-${payload.sessionId}`,
     attempts: 2,
     backoff: { type: "exponential", delay: 1000 },
+    jobOptions: {
+      // A pending database handoff can retry after an acknowledgement loss.
+      // Retaining this one deterministic job id makes that retry a no-op even
+      // after validation completed; downstream jobs keep the bounded defaults.
+      removeOnComplete: false,
+      removeOnFail: false,
+    },
   });
 }
 

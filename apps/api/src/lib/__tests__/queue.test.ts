@@ -1,6 +1,7 @@
 const mockDisconnect = jest.fn();
 const mockClose = jest.fn();
 const mockGetJobCounts = jest.fn();
+const mockAdd = jest.fn();
 
 jest.mock("ioredis", () =>
   jest.fn().mockImplementation(() => ({ disconnect: mockDisconnect }))
@@ -12,16 +13,64 @@ jest.mock("bullmq", () => ({
 }));
 
 import { Queue } from "bullmq";
-import { QUEUE_NAMES, getWaitingJobCounts, withQueue } from "../queue";
+import {
+  QUEUE_NAMES,
+  enqueueTranscribe,
+  enqueueValidate,
+  getWaitingJobCounts,
+  withQueue,
+} from "../queue";
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockClose.mockResolvedValue(undefined);
   (Queue as unknown as jest.Mock).mockImplementation((name: string) => ({
     name,
+    add: mockAdd,
     getJobCounts: mockGetJobCounts,
     close: mockClose,
   }));
+});
+
+describe("Pipeline job retention", () => {
+  it("retains completed validation jobs as durable finalize deduplication evidence", async () => {
+    mockAdd.mockResolvedValue(undefined);
+
+    await enqueueValidate({
+      sessionId: "session-1",
+      storageKey: "recordings/session-1/audio.webm",
+      mimeType: "audio/webm",
+    });
+
+    expect(mockAdd).toHaveBeenCalledWith(
+      "validate-recording",
+      expect.objectContaining({ sessionId: "session-1" }),
+      expect.objectContaining({
+        jobId: "validate-session-1",
+        removeOnComplete: false,
+        removeOnFail: false,
+      })
+    );
+  });
+
+  it("does not apply permanent retention to downstream queues", async () => {
+    mockAdd.mockResolvedValue(undefined);
+
+    await enqueueTranscribe({
+      sessionId: "session-1",
+      storageKey: "recordings/session-1/audio.webm",
+      mimeType: "audio/webm",
+    });
+
+    expect(mockAdd).toHaveBeenCalledWith(
+      "transcribe",
+      expect.any(Object),
+      expect.objectContaining({
+        removeOnComplete: true,
+        removeOnFail: { count: 50 },
+      })
+    );
+  });
 });
 
 describe("getWaitingJobCounts", () => {
