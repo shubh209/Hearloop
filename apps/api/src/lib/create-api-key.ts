@@ -8,6 +8,7 @@ import type { Database } from "./db";
 export type ApiKeyType = "secret" | "public";
 
 type ApiKeyInsertDatabase = Pick<Kysely<Database>, "insertInto">;
+type ApiKeyRotationDatabase = Pick<Kysely<Database>, "transaction">;
 
 function createApiKeyMaterial(type: ApiKeyType) {
   const prefix = type === "secret" ? "sk-live_" : "pk-live_";
@@ -51,12 +52,20 @@ export async function createApiKeyForPartner(
   return insertApiKey(db, partnerId, type);
 }
 
-export async function rotateApiKeyForPartner(
-  partnerId: string,
-  type: ApiKeyType
-): Promise<{ rawKey: string; keyPrefix: string; keyId: string }> {
-  return db.transaction().execute(async (trx) => {
-    await trx
+export function createApiKeyRotator(database: ApiKeyRotationDatabase) {
+  return async (
+    partnerId: string,
+    type: ApiKeyType
+  ): Promise<{ rawKey: string; keyPrefix: string; keyId: string }> =>
+    database.transaction().execute(async (trx) => {
+      await trx
+        .selectFrom("partners")
+        .select("id")
+        .where("id", "=", partnerId)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+
+      await trx
       .updateTable("api_keys")
       .set({ revoked_at: new Date() })
       .where("partner_id", "=", partnerId)
@@ -64,6 +73,13 @@ export async function rotateApiKeyForPartner(
       .where("revoked_at", "is", null)
       .execute();
 
-    return insertApiKey(trx, partnerId, type);
-  });
+      return insertApiKey(trx, partnerId, type);
+    });
+}
+
+export async function rotateApiKeyForPartner(
+  partnerId: string,
+  type: ApiKeyType
+): Promise<{ rawKey: string; keyPrefix: string; keyId: string }> {
+  return createApiKeyRotator(db)(partnerId, type);
 }

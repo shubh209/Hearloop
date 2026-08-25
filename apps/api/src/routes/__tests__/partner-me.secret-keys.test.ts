@@ -1,4 +1,5 @@
 const mockApiKeys: Array<Record<string, unknown>> = [];
+const mockForUpdate = jest.fn();
 
 function matches(
   row: Record<string, unknown>,
@@ -44,9 +45,23 @@ function mockUpdateApiKey() {
   return query;
 }
 
+function mockSelectPartner() {
+  const query = {
+    select: () => query,
+    where: () => query,
+    forUpdate: () => {
+      mockForUpdate();
+      return query;
+    },
+    executeTakeFirstOrThrow: async () => ({ id: "partner-a" }),
+  };
+  return query;
+}
+
 const mockDb = {
   insertInto: jest.fn().mockImplementation(mockInsertApiKey),
   updateTable: jest.fn().mockImplementation(mockUpdateApiKey),
+  selectFrom: jest.fn().mockImplementation(mockSelectPartner),
   transaction: jest.fn().mockImplementation(() => ({
     execute: (callback: (transaction: typeof mockDb) => unknown) => callback(mockDb),
   })),
@@ -73,6 +88,8 @@ describe("POST /partners/me/secret-keys", () => {
     mockApiKeys.splice(0);
     mockDb.insertInto.mockClear();
     mockDb.updateTable.mockClear();
+    mockDb.selectFrom.mockClear();
+    mockForUpdate.mockClear();
     mockDb.transaction.mockClear();
 
     mockApiKeys.push(
@@ -124,6 +141,8 @@ describe("POST /partners/me/secret-keys", () => {
     expect(activeKeys("partner-a", "secret")).toHaveLength(1);
     expect(oldPartnerAKey.revoked_at).toBeInstanceOf(Date);
     expect(activeKeys("partner-b", "secret")).toEqual([partnerBKey]);
+    expect(mockDb.selectFrom).toHaveBeenCalledWith("partners");
+    expect(mockForUpdate).toHaveBeenCalledTimes(1);
 
     await app.close();
   });
