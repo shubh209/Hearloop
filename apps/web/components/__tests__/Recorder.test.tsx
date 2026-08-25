@@ -221,6 +221,36 @@ test("a finalize failure keeps the audio preview available for retry", async () 
   expect(document.querySelector("audio")).toHaveAttribute("src", "blob:preview");
 });
 
+test("a lost finalize response retries only the identical idempotent finalize request", async () => {
+  const fetchMock = jest
+    .fn()
+    .mockImplementationOnce(() => jsonResponse({ allowedOrigins: [] }))
+    .mockImplementationOnce(() => jsonResponse({}))
+    .mockImplementationOnce(() => jsonResponse({ uploadUrl: "https://storage.test/upload", storageKey: "recordings/a.webm" }))
+    .mockImplementationOnce(() => jsonResponse({}))
+    .mockRejectedValueOnce(new Error("finalize response lost"))
+    .mockImplementationOnce(() => jsonResponse({}));
+  global.fetch = fetchMock;
+  await reachPreview();
+
+  fireEvent.click(screen.getByRole("button", { name: /send feedback/i }));
+  expect(await screen.findByText(/finalize response lost/i)).toBeInTheDocument();
+  const firstFinalizeOptions = fetchMock.mock.calls[4][1];
+
+  fireEvent.click(screen.getByRole("button", { name: /send feedback/i }));
+
+  await screen.findByText(/thank you for your feedback/i);
+  expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
+    `/api/public/session/${TOKEN}`,
+    `/api/public/session/${TOKEN}/open`,
+    `/api/public/session/${TOKEN}/upload-url`,
+    "https://storage.test/upload",
+    `/api/public/session/${TOKEN}/finalize`,
+    `/api/public/session/${TOKEN}/finalize`,
+  ]);
+  expect(fetchMock.mock.calls[5][1]).toEqual(firstFinalizeOptions);
+});
+
 test("a rejected open preserves preview and stops before requesting upload", async () => {
   const fetchMock = jest
     .fn()

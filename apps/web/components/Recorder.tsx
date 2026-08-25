@@ -29,6 +29,13 @@ interface RecorderProps {
   onSubmitted?: () => void;
 }
 
+interface PendingFinalize {
+  storageKey: string;
+  mimeType: string;
+  sizeBytes: number;
+  consentGiven: boolean;
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 export default function Recorder({
@@ -51,6 +58,7 @@ export default function Recorder({
   const streamRef = useRef<MediaStream | null>(null);
   const permissionAttemptRef = useRef(0);
   const recordingGenerationRef = useRef(0);
+  const pendingFinalizeRef = useRef<PendingFinalize | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -163,6 +171,7 @@ export default function Recorder({
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     audioBlobRef.current = null;
+    pendingFinalizeRef.current = null;
     setError(null);
     setCountdown(maxDurationSec);
     setState("idle");
@@ -172,6 +181,7 @@ export default function Recorder({
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     audioBlobRef.current = null;
+    pendingFinalizeRef.current = null;
     requestPermission();
   }, [audioUrl, requestPermission]);
 
@@ -181,74 +191,82 @@ export default function Recorder({
     setState("uploading");
 
     try {
-      const mimeType = audioBlobRef.current.type;
+      let finalizePayload = pendingFinalizeRef.current;
 
-      // 1. Fetch session metadata. Origin policy is authorized by the server.
-      const sessionMetaRes = await fetch(
-        `${API_BASE}/public/session/${sessionToken}`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
+      if (!finalizePayload) {
+        const mimeType = audioBlobRef.current.type;
+
+        // 1. Fetch session metadata. Origin policy is authorized by the server.
+        const sessionMetaRes = await fetch(
+          `${API_BASE}/public/session/${sessionToken}`,
+          {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+
+        if (!sessionMetaRes.ok) {
+          throw new Error("Failed to fetch session metadata");
         }
-      );
 
-      if (!sessionMetaRes.ok) {
-        throw new Error("Failed to fetch session metadata");
-      }
+        const sessionMeta = (await sessionMetaRes.json()) as { allowedOrigins: string[] };
+        void sessionMeta.allowedOrigins;
 
-      const sessionMeta = (await sessionMetaRes.json()) as { allowedOrigins: string[] };
-      void sessionMeta.allowedOrigins;
-
-      // 3. Open session — must send explicit body to satisfy Fastify's JSON parser
-      const openRes = await fetch(`${API_BASE}/public/session/${sessionToken}/open`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-
-      if (!openRes.ok) {
-        throw new Error("Unable to open this capture. Please try again.");
-      }
-
-      // 4. Get signed upload URL via public route (no Bearer auth needed)
-      const urlRes = await fetch(
-        `${API_BASE}/public/session/${sessionToken}/upload-url`,
-        {
+        // 2. Open session — must send explicit body to satisfy Fastify's JSON parser
+        const openRes = await fetch(`${API_BASE}/public/session/${sessionToken}/open`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mimeType }),
+          body: JSON.stringify({}),
+        });
+
+        if (!openRes.ok) {
+          throw new Error("Unable to open this capture. Please try again.");
         }
-      );
 
-      if (!urlRes.ok) throw new Error("Failed to get upload URL");
-      const { uploadUrl, storageKey } = await urlRes.json();
+        // 3. Get signed upload URL via public route (no Bearer auth needed)
+        const urlRes = await fetch(
+          `${API_BASE}/public/session/${sessionToken}/upload-url`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mimeType }),
+          }
+        );
 
-      // 5. Upload directly to S3
-      const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
-        body: audioBlobRef.current,
-        headers: { "Content-Type": mimeType },
-      });
+        if (!urlRes.ok) throw new Error("Failed to get upload URL");
+        const { uploadUrl, storageKey } = await urlRes.json();
 
-      if (!uploadRes.ok) throw new Error("Audio upload failed");
+        // 4. Upload directly to S3
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          body: audioBlobRef.current,
+          headers: { "Content-Type": mimeType },
+        });
 
-      // 6. Finalize session
+        if (!uploadRes.ok) throw new Error("Audio upload failed");
+
+        finalizePayload = {
+          storageKey,
+          mimeType,
+          sizeBytes: audioBlobRef.current.size,
+          consentGiven,
+        };
+        pendingFinalizeRef.current = finalizePayload;
+      }
+
+      // 5. Finalize session. A retry reuses this exact payload directly.
       const finalizeRes = await fetch(
         `${API_BASE}/public/session/${sessionToken}/finalize`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            storageKey,
-            mimeType,
-            sizeBytes: audioBlobRef.current.size,
-            consentGiven,
-          }),
+          body: JSON.stringify(finalizePayload),
         }
       );
 
       if (!finalizeRes.ok) throw new Error("Finalize failed");
 
+      pendingFinalizeRef.current = null;
       setState("submitted");
       onSubmitted?.();
     } catch (err) {
