@@ -224,7 +224,7 @@ describe("useHearloop — unit tests", () => {
 
       expect(result.current.state).toBe("error");
       expect(result.current.error).toBe(
-        "No authentication provided. Pass sessionCreateToken or apiKey."
+        "No authentication provided. Pass sessionCreateToken or embedKey."
       );
       expect(mockFetch).not.toHaveBeenCalled();
       expect(mockRunApiFlow).not.toHaveBeenCalled();

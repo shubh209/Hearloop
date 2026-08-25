@@ -109,7 +109,7 @@ describe("getSessionCreateToken", () => {
     (global.fetch as jest.Mock).mockResolvedValueOnce(failResponse());
 
     await expect(getSessionCreateToken(BASE_URL, "bad-key")).rejects.toThrow(
-      "Failed to get session token. Check your API key."
+      "Failed to get session token. Check your embed key."
     );
   });
 });
@@ -495,7 +495,7 @@ describe("runApiFlow — auth routing", () => {
     await expect(
       runApiFlow(BASE_URL, {}, blob, "audio/webm", opts)
     ).rejects.toThrow(
-      "No authentication provided. Pass sessionCreateToken or apiKey."
+      "No authentication provided. Pass sessionCreateToken or embedKey."
     );
 
     // No fetch calls should have been made

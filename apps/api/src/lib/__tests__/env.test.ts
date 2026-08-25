@@ -16,6 +16,7 @@ const VALID_ENV: Record<string, string> = {
   BEDROCK_REGION:            'us-east-2',
   GROQ_API_KEY:              'gsk_test_key',
   WEBHOOK_SIGNING_SECRET:    'super-secret',
+  PARTNER_SESSION_SECRET:    'test-partner-session-secret-at-least-32-characters',
   STORAGE_REGION:            'us-east-2',
   STORAGE_BUCKET:            'hearloop-audio-prod',
   STORAGE_ACCESS_KEY_ID:     'AKIAIOSFODNN7EXAMPLE',
