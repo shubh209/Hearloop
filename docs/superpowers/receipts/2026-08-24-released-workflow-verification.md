@@ -5,7 +5,7 @@
 - Plan: `docs/superpowers/plans/2026-08-24-released-workflow-verification.md`
 - Diff base: `eab2e42`
 - Evidence HEAD before Task 11: `6cc5b85ba3727078c6acce7583978ad8bea677a9`
-- Final reviewed implementation HEAD: `af1eeb8`
+- Final reviewed implementation HEAD: `813973b`
 - State: implemented, not released
 
 ## Controlled workflow evidence
@@ -34,15 +34,16 @@ was changed by Task 11.
 
 The first sandboxed attempt could not create a PostgreSQL shared-memory segment
 (`Operation not permitted`) and did not initialize a cluster. The required
-command was rerun with the approved local-process permission against a fresh
-cluster at `/tmp/hearloop-spec1-pg.m8MapL` on `127.0.0.1:55439`.
+command was rerun with the approved local-process permission. After the final
+review fixes, the contract and database-enabled API suite were rerun against a
+fresh cluster at `/tmp/hearloop-final-pg.XzjdhD` on `127.0.0.1:55441`.
 
 | Command | Exit | Evidence |
 | --- | ---: | --- |
 | `/Library/PostgreSQL/17/bin/initdb -D "$spec1_pg_dir" -A trust` | 0 | disposable PostgreSQL 17 cluster initialized |
-| `/Library/PostgreSQL/17/bin/pg_ctl -D "$spec1_pg_dir" -o "-p 55439 -h 127.0.0.1" -w start` | 0 | server accepted local connections on port 55439 |
-| `/Library/PostgreSQL/17/bin/createdb -h 127.0.0.1 -p 55439 hearloop_test` | 0 | disposable database created |
-| `TEST_DATABASE_URL=postgresql://127.0.0.1:55439/hearloop_test bash packages/db/tests/011_media_evidence_pinning.test.sh` | 0 | `011_media_evidence_pinning migration contract: PASS` |
+| `/Library/PostgreSQL/17/bin/pg_ctl -D "$final_pg_dir" -o "-p 55441 -h 127.0.0.1" -w start` | 0 | server accepted local connections on port 55441 |
+| `/Library/PostgreSQL/17/bin/createdb -h 127.0.0.1 -p 55441 hearloop_test` | 0 | disposable database created |
+| `TEST_DATABASE_URL=postgresql://127.0.0.1:55441/hearloop_test bash packages/db/tests/011_media_evidence_pinning.test.sh` | 0 | `011_media_evidence_pinning migration contract: PASS` |
 | `/Library/PostgreSQL/17/bin/pg_ctl -D "$spec1_pg_dir" -m fast -w stop` | 0 | server stopped |
 
 The constraint-error log lines are expected negative assertions performed by
@@ -59,18 +60,17 @@ asserts the migration compatibility and constraints from a clean schema.
 
 ## Fresh local verification matrix
 
-The commands below were run once, sequentially, after the controlled workflow
-and CI changes.
+The commands below were rerun sequentially after all final-review fixes.
 
 | Command | Exit | Evidence |
 | --- | ---: | --- |
 | `npm run build --workspace=apps/api` | 0 | TypeScript build passed |
-| `npm test --workspace=apps/api -- --detectOpenHandles` | 0 | 47 suites passed, 2 skipped; 325 tests passed, 2 skipped; 0 failed |
+| `TEST_DATABASE_URL=postgresql://127.0.0.1:55441/hearloop_test npm test --workspace=apps/api -- --detectOpenHandles` | 0 | 49 suites passed, 1 skipped; 327 tests passed, 1 skipped; 0 failed; both PostgreSQL concurrency suites passed |
 | `npm run build --workspace=apps/web` | 0 | Next.js production build passed; 10 pages generated |
 | `npm run build --workspace=apps/quicklube-demo` | 0 | Next.js production build passed; 4 pages generated |
 | `npm run build --workspace=packages/react` | 0 | CJS, ESM, source maps, and declarations built |
 | `npm test --workspace=packages/react` | 0 | 4 suites passed; 72 tests passed |
-| `npm test --workspace=apps/web` | 0 | 5 suites passed; 16 tests passed |
+| `npm test --workspace=apps/web` | 0 | 5 suites passed; 17 tests passed |
 | `bash scripts/check-browser-secret-examples.sh` | 0 | no browser-secret examples found; no output |
 | `git diff --check` | 0 | no output |
 
@@ -93,6 +93,7 @@ The implementation ledger records the scoped review evidence. Fixing commits:
 - All-Session dashboard aggregation: `01448df`
 - Delivery and health safety gaps: `6cc5b85`
 - Release-blocking CI, controlled workflow, and real finalize/webhook evidence: `0696da2`, `af1eeb8`
+- Final review fixes for concurrent key rotation, ambiguous finalize retry, and clean CI database initialization: `06c80db`, `ecc3808`, `813973b`
 
 Rejected hypotheses, with evidence:
 
