@@ -46,12 +46,11 @@ export default function Recorder({
   const [consentGiven, setConsentGiven] = useState(!consentRequired);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const audioBlobRef = useRef<Blob | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const permissionAttemptRef = useRef(0);
-  const discardRecordingRef = useRef(false);
+  const recordingGenerationRef = useRef(0);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -86,24 +85,32 @@ export default function Recorder({
 
   const startRecording = useCallback(() => {
     if (!streamRef.current) return;
-    chunksRef.current = [];
-    discardRecordingRef.current = false;
+    const generation = ++recordingGenerationRef.current;
+    const chunks: Blob[] = [];
     try {
       const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
       const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunksRef.current.push(event.data);
+        if (
+          generation === recordingGenerationRef.current &&
+          mediaRecorderRef.current === mediaRecorder &&
+          event.data.size > 0
+        ) {
+          chunks.push(event.data);
+        }
       };
 
       mediaRecorder.onstop = () => {
-        mediaRecorderRef.current = null;
-        if (discardRecordingRef.current) {
-          chunksRef.current = [];
+        if (
+          generation !== recordingGenerationRef.current ||
+          mediaRecorderRef.current !== mediaRecorder
+        ) {
           return;
         }
-        const blob = new Blob(chunksRef.current, { type: mimeType });
+        mediaRecorderRef.current = null;
+        const blob = new Blob(chunks, { type: mimeType });
         audioBlobRef.current = blob;
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
@@ -121,7 +128,12 @@ export default function Recorder({
         setCountdown(remaining);
         if (remaining <= 0) {
           clearTimer();
-          mediaRecorderRef.current?.stop();
+          if (
+            generation === recordingGenerationRef.current &&
+            mediaRecorderRef.current === mediaRecorder
+          ) {
+            mediaRecorder.stop();
+          }
           stopTracks();
         }
       }, 1000);
@@ -140,17 +152,17 @@ export default function Recorder({
 
   const cancelCapture = useCallback(() => {
     permissionAttemptRef.current += 1;
+    recordingGenerationRef.current += 1;
     clearTimer();
-    discardRecordingRef.current = true;
-    if (mediaRecorderRef.current?.state !== "inactive") {
-      mediaRecorderRef.current?.stop();
-    }
+    const recorder = mediaRecorderRef.current;
     mediaRecorderRef.current = null;
+    if (recorder?.state !== "inactive") {
+      recorder?.stop();
+    }
     stopTracks();
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     audioBlobRef.current = null;
-    chunksRef.current = [];
     setError(null);
     setCountdown(maxDurationSec);
     setState("idle");
@@ -188,11 +200,15 @@ export default function Recorder({
       void sessionMeta.allowedOrigins;
 
       // 3. Open session — must send explicit body to satisfy Fastify's JSON parser
-      await fetch(`${API_BASE}/public/session/${sessionToken}/open`, {
+      const openRes = await fetch(`${API_BASE}/public/session/${sessionToken}/open`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
+
+      if (!openRes.ok) {
+        throw new Error("Unable to open this capture. Please try again.");
+      }
 
       // 4. Get signed upload URL via public route (no Bearer auth needed)
       const urlRes = await fetch(

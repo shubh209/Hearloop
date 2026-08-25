@@ -152,6 +152,40 @@ test("Cancel during recording stops every media track and makes no network reque
   expect(screen.getByRole("button", { name: /tap to start/i })).toBeInTheDocument();
 });
 
+test("a delayed stop from a cancelled recorder cannot replace a newer recording", async () => {
+  const recorders: DelayedStopMediaRecorder[] = [];
+  class DelayedStopMediaRecorder extends FakeMediaRecorder {
+    pendingStop: (() => void) | null = null;
+
+    constructor(stream: MediaStream, options: MediaRecorderOptions) {
+      super(stream, options);
+      recorders.push(this);
+    }
+
+    stop() {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: new Blob(["old voice"], { type: "audio/webm" }) });
+      this.pendingStop = this.onstop;
+    }
+  }
+  Object.defineProperty(global, "MediaRecorder", {
+    configurable: true,
+    value: DelayedStopMediaRecorder,
+  });
+  render(<Recorder sessionToken={TOKEN} />);
+  fireEvent.click(screen.getByRole("button", { name: /tap to start/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /record/i }));
+  fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+  fireEvent.click(screen.getByRole("button", { name: /tap to start/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /record/i }));
+  await act(async () => recorders[0].pendingStop?.());
+
+  expect(screen.getByText(/tap to stop early/i)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /send feedback/i })).not.toBeInTheDocument();
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
+});
+
 test("Cancel is visible while permission is pending and stops a late stream without network", async () => {
   let resolveStream!: (value: MediaStream) => void;
   (navigator.mediaDevices.getUserMedia as jest.Mock).mockReturnValueOnce(
@@ -184,5 +218,24 @@ test("a finalize failure keeps the audio preview available for retry", async () 
   expect(await screen.findByText(/finalize failed/i)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /send feedback/i })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();
+  expect(document.querySelector("audio")).toHaveAttribute("src", "blob:preview");
+});
+
+test("a rejected open preserves preview and stops before requesting upload", async () => {
+  const fetchMock = jest
+    .fn()
+    .mockImplementationOnce(() => jsonResponse({ allowedOrigins: [] }))
+    .mockImplementationOnce(() => jsonResponse({ error: "invalid_session_state" }, false));
+  global.fetch = fetchMock;
+  await reachPreview();
+
+  fireEvent.click(screen.getByRole("button", { name: /send feedback/i }));
+
+  expect(await screen.findByText(/unable to open this capture/i)).toBeInTheDocument();
+  expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
+    `/api/public/session/${TOKEN}`,
+    `/api/public/session/${TOKEN}/open`,
+  ]);
+  expect(screen.getByRole("button", { name: /send feedback/i })).toBeInTheDocument();
   expect(document.querySelector("audio")).toHaveAttribute("src", "blob:preview");
 });

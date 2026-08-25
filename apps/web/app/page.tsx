@@ -953,11 +953,10 @@ export default function LandingPage() {
                 });
               <span class="kw">&lt;/script&gt;</span>`}} />
                 ) : (
-                  <pre dangerouslySetInnerHTML={{__html: `<span class="cm">// Create a feedback session</span>
-                  <span class="kw">const</span> session = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">"/v1/sessions"</span>, {
+                  <pre dangerouslySetInnerHTML={{__html: `<span class="cm">// Call your server route; credentials stay server-side</span>
+                  <span class="kw">const</span> session = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">"/api/feedback/session"</span>, {
                     method: <span class="str">"POST"</span>,
                     headers: {
-                      <span class="str">"Authorization"</span>: <span class="str">"Bearer sk-live_..."</span>,
                       <span class="str">"Content-Type"</span>: <span class="str">"application/json"</span>,
                     },        
                     body: <span class="fn">JSON.stringify</span>({
