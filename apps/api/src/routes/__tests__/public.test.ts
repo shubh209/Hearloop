@@ -6,8 +6,11 @@
 // array shape. All DB access is mocked so no real database is required.
 
 const mockExecuteTakeFirst = jest.fn();
+const mockExecuteInsert = jest.fn();
 const mockGetUploadSignedUrl = jest.fn();
 const mockIssueVersionedUploadGrant = jest.fn();
+const mockLookupPartnerByApiKey = jest.fn();
+const mockClaimSessionCreateToken = jest.fn();
 jest.mock('../../lib/db', () => ({
   db: {
     selectFrom: jest.fn().mockReturnThis(),
@@ -15,7 +18,21 @@ jest.mock('../../lib/db', () => ({
     select: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     executeTakeFirst: (...args: unknown[]) => mockExecuteTakeFirst(...args),
+    insertInto: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
+    execute: (...args: unknown[]) => mockExecuteInsert(...args),
   },
+}));
+
+jest.mock('../../lib/lookup-api-key', () => ({
+  ...jest.requireActual('../../lib/lookup-api-key'),
+  lookupPartnerByApiKey: (...args: unknown[]) =>
+    mockLookupPartnerByApiKey(...args),
+}));
+
+jest.mock('../../lib/session-create-token', () => ({
+  claimSessionCreateToken: (...args: unknown[]) =>
+    mockClaimSessionCreateToken(...args),
 }));
 
 jest.mock('../../lib/storage', () => ({
@@ -57,6 +74,111 @@ function makeReply() {
   reply.header = jest.fn().mockReturnValue(reply);
   return reply;
 }
+
+describe('POST /public/sessions/create-token — Widget embed key origin boundary', () => {
+  beforeEach(() => {
+    mockExecuteInsert.mockReset().mockResolvedValue(undefined);
+    mockLookupPartnerByApiKey.mockReset().mockResolvedValue({
+      keyId: 'key-1',
+      partnerId: 'partner-1',
+      name: 'Partner One',
+      webhookUrl: null,
+      allowedOrigins: 'https://allowed.example.com',
+      businessContext: null,
+      keyType: 'public',
+    });
+  });
+
+  it('issues a token when the request Origin is allowlisted', async () => {
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/sessions/create-token'](
+      {
+        headers: { origin: 'https://allowed.example.com' },
+        body: { embedKey: 'pk-live_browser-safe-key' },
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(200);
+    expect(reply.header).toHaveBeenCalledWith(
+      'Access-Control-Allow-Origin',
+      'https://allowed.example.com'
+    );
+  });
+
+  it.each([
+    ['missing', {}],
+    ['disallowed', { origin: 'https://attacker.example.com' }],
+  ])('rejects a %s Origin', async (_caseName, headers) => {
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const reply = makeReply();
+
+    await handlers['POST /public/sessions/create-token'](
+      {
+        headers,
+        body: { embedKey: 'pk-live_browser-safe-key' },
+      },
+      reply
+    );
+
+    expect(reply.code).toHaveBeenCalledWith(403);
+    expect(reply.send).toHaveBeenCalledWith({ error: 'origin_not_allowed' });
+    expect(mockExecuteInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /public/sessions — Session-create token claim boundary', () => {
+  beforeEach(() => {
+    mockExecuteTakeFirst.mockReset().mockResolvedValue(undefined);
+    mockExecuteInsert.mockReset().mockResolvedValue(undefined);
+    mockClaimSessionCreateToken
+      .mockReset()
+      .mockResolvedValueOnce({ partnerId: 'partner-1' })
+      .mockResolvedValueOnce(null);
+  });
+
+  it('creates one Session when two requests receive one winning claim', async () => {
+    const { app, handlers } = makeApp();
+    await publicRoutes(app);
+    const winnerReply = makeReply();
+    const loserReply = makeReply();
+
+    await Promise.all([
+      handlers['POST /public/sessions'](
+        {
+          headers: { authorization: 'Bearer single-use-token' },
+          body: {},
+        },
+        winnerReply
+      ),
+      handlers['POST /public/sessions'](
+        {
+          headers: { authorization: 'Bearer single-use-token' },
+          body: {},
+        },
+        loserReply
+      ),
+    ]);
+
+    expect(mockClaimSessionCreateToken).toHaveBeenNthCalledWith(
+      1,
+      'single-use-token',
+      expect.any(Date)
+    );
+    expect(mockClaimSessionCreateToken).toHaveBeenNthCalledWith(
+      2,
+      'single-use-token',
+      expect.any(Date)
+    );
+    expect(winnerReply.code).toHaveBeenCalledWith(201);
+    expect(loserReply.code).toHaveBeenCalledWith(401);
+    expect(mockExecuteInsert).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('GET /public/session/:token — allowed_origins parsing', () => {
   beforeEach(() => {

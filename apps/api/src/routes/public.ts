@@ -16,6 +16,7 @@ import {
   issueVersionedUploadGrant,
   UploadGrantError,
 } from "../lib/upload-grants";
+import { claimSessionCreateToken } from "../lib/session-create-token";
 
 export async function publicRoutes(app: FastifyInstance) {
   // POST /public/sessions/create-token — exchange embed or secret key for session-create token
@@ -86,39 +87,6 @@ export async function publicRoutes(app: FastifyInstance) {
     }
   );
 
-  // Helper: Validate session-create token
-  async function validateSessionCreateToken(token: string) {
-    // 1. Fetch token from DB
-    const tokenRecord = await db
-      .selectFrom("session_create_tokens")
-      .selectAll()
-      .where("token", "=", token)
-      .executeTakeFirst();
-
-    if (!tokenRecord) {
-      return { valid: false, partnerId: null };
-    }
-
-    // 2. Check expiry
-    if (new Date() > tokenRecord.expires_at) {
-      return { valid: false, partnerId: null };
-    }
-
-    // 3. Check if already used
-    if (tokenRecord.used_at) {
-      return { valid: false, partnerId: null };
-    }
-
-    // 4. Mark as used
-    await db
-      .updateTable("session_create_tokens")
-      .set({ used_at: new Date() })
-      .where("id", "=", tokenRecord.id)
-      .execute();
-
-    return { valid: true, partnerId: tokenRecord.partner_id };
-  }
-
   // POST /public/sessions — create session using bearer token (session-create token) or API key
   app.post(
     "/public/sessions",
@@ -131,12 +99,13 @@ export async function publicRoutes(app: FastifyInstance) {
 
       const token = authHeader.slice(7);
 
-      // Validate session-create token
-      const { valid, partnerId } = await validateSessionCreateToken(token);
+      const claimed = await claimSessionCreateToken(token, new Date());
 
-      if (!valid || !partnerId) {
+      if (!claimed) {
         return reply.code(401).send({ error: "Invalid or expired token" });
       }
+
+      const { partnerId } = claimed;
 
       try {
         const body = req.body as {
