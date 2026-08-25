@@ -11,6 +11,7 @@ node_modules/
 **/dist/
 **/.turbo/
 **/*.tsbuildinfo
+/.worktrees/
 
 # OS
 .DS_Store
@@ -25,4 +26,3 @@ testing/load-performance/results/*.json
 # ZAP generated reports — large binary/HTML, use zap-summary.md instead
 testing/vulnerability-security/zap-results/zap-report.html
 testing/vulnerability-security/zap-results/zap-report.json
-
