@@ -1,5 +1,6 @@
 const mockPartners: Array<Record<string, any>> = [];
 const mockApiKeys: Array<Record<string, any>> = [];
+const mockSessions: Array<Record<string, any>> = [];
 
 function conditionValue(
   conditions: Array<[string, string, unknown]>,
@@ -72,6 +73,7 @@ describe("Partner registration and dashboard authentication", () => {
   beforeEach(() => {
     mockPartners.splice(0);
     mockApiKeys.splice(0);
+    mockSessions.splice(0);
     process.env.PARTNER_SESSION_SECRET =
       "test-partner-session-secret-at-least-32-characters";
   });
@@ -81,6 +83,14 @@ describe("Partner registration and dashboard authentication", () => {
   });
 
   it("keeps a Partner dashboard session scoped to its authenticated identity", async () => {
+    mockSessions.push({
+      id: "session-a",
+      partner_id: "partner-a",
+      public_token: "9c9643a1-e87c-4b22-a7f3-03b7afd81d78",
+      status: "created",
+    });
+    const publicSessionToken = mockSessions[0].public_token;
+
     const app = Fastify();
     app.decorate("authenticatePartner", authenticatePartner);
     await app.register(partnerRoutes, { prefix: "/v1" });
@@ -120,7 +130,7 @@ describe("Partner registration and dashboard authentication", () => {
     const publicSession = await app.inject({
       method: "GET",
       url: "/v1/partners/me",
-      headers: { authorization: "Bearer public-session-token" },
+      headers: { authorization: `Bearer ${publicSessionToken}` },
     });
     expect(publicSession.statusCode).toBe(401);
 
