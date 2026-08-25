@@ -11,7 +11,7 @@ export default function LandingPage() {
 
   const copySnippet = () => {
     navigator.clipboard.writeText(
-      `<script src="https://hearloop.vercel.app/widget.js"></script>\n<script>\n  Hearloop.init({\n    apiKey: "sk-live_your_key",\n    promptText: "How was your service today?"\n  });\n</script>`
+      `<script src="https://hearloop.vercel.app/widget.js"></script>\n<script>\n  Hearloop.init({\n    embedKey: "pk-live_your_embed_key",\n    promptText: "How was your service today?"\n  });\n</script>`
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -946,7 +946,7 @@ export default function LandingPage() {
               <pre dangerouslySetInnerHTML={{__html: `<span class="kw">&lt;script</span> src=<span class="str">"https://hearloop.shubh209.workers.dev/widget.js"</span><span class="kw">&gt;&lt;/script&gt;</span>
               <span class="kw">&lt;script&gt;</span>
                 <span class="fn">Hearloop</span>.init({
-                  <span class="str">apiKey</span>: <span class="str">"sk-live_your_key"</span>,
+                  <span class="str">embedKey</span>: <span class="str">"pk-live_your_embed_key"</span>,
                   <span class="str">promptText</span>: <span class="str">"How was your service today?"</span>,
                   <span class="str">maxDurationSec</span>: <span class="str">5</span>,
                   <span class="str">position</span>: <span class="str">"bottom-right"</span>

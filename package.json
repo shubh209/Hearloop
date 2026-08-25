@@ -8,7 +8,8 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
-    "build": "turbo run build"
+    "build": "turbo run build",
+    "check:browser-secrets": "bash scripts/check-browser-secret-examples.sh"
   },
   "devDependencies": {
     "turbo": "^2.9.14",

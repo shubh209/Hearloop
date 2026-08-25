@@ -185,14 +185,14 @@ export default function DocsPage() {
                 <div className="page-sub">Get voice feedback running on your site in under 5 minutes.</div>
 
                 <Callout type="tip">
-                  You'll need an API key from your <a href="/dashboard" style={{color:"var(--green)"}}>Hearloop dashboard</a> before starting.
+                  You'll need a Widget embed key from your <a href="/dashboard" style={{color:"var(--green)"}}>Hearloop dashboard</a> before starting.
                 </Callout>
 
                 <div className="steps">
                   <div className="step">
                     <div className="step-body">
-                      <div className="step-title">Get your API key</div>
-                      <div className="step-desc">Sign in to your dashboard and navigate to API keys. Click "Generate key" and copy your <span className="tag">sk-live_</span> key.</div>
+                      <div className="step-title">Get your Widget embed key</div>
+                      <div className="step-desc">Sign in to your dashboard, open Embed settings, and copy your browser-safe <span className="tag">pk-live_</span> key.</div>
                     </div>
                   </div>
                   <div className="step">
@@ -202,7 +202,7 @@ export default function DocsPage() {
                       <Code lang="html">{`<script src="https://hearloop.vercel.app/widget.js"></script>
 <script>
   Hearloop.init({
-    apiKey: "sk-live_your_key_here",
+    embedKey: "pk-live_your_embed_key",
     promptText: "How was your service today?",
     maxDurationSec: 5,
     position: "bottom-right"
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
 
                 <H2>Configuration</H2>
                 <Code lang="javascript">{`Hearloop.init({
-  apiKey: "sk-live_your_key",      // Required
+  embedKey: "pk-live_your_embed_key", // Required
   promptText: "How was your experience?", // Default: "How was your experience today?"
   maxDurationSec: 5,               // 1–30, default: 5
   position: "bottom-right",        // "bottom-right" | "bottom-left"
@@ -270,7 +270,7 @@ export async function POST(req: Request) {
                   <thead><tr><th>Option</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
                   <tbody>
                     {[
-                      ["apiKey", "string", "Yes", "Your sk-live_ partner API key"],
+                      ["embedKey", "string", "Yes", "Your browser-safe pk-live_ Widget embed key"],
                       ["promptText", "string", "No", "Question shown to the customer in the widget"],
                       ["maxDurationSec", "number", "No", "Max recording length in seconds. Default: 5"],
                       ["position", "string", "No", `"bottom-right" or "bottom-left". Default: "bottom-right"`],

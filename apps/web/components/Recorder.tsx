@@ -4,13 +4,8 @@
 /**
  * Recorder component for capturing voice feedback.
  * 
- * Two auth flows supported:
- * 1. Public token flow: sessionToken from URL (no API key needed)
- * 2. Authenticated flow: Bearer API key (for programmatic session creation)
- * 
- * The public token flow is used here; the sessionToken is passed as a prop
- * and used directly without Bearer auth. Origin validation is performed
- * client-side before finalize.
+ * Hosted capture uses the scoped public token passed from the URL. The server
+ * authorizes every public-token request, including origin policy.
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -55,80 +50,128 @@ export default function Recorder({
   const audioBlobRef = useRef<Blob | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const permissionAttemptRef = useRef(0);
+  const discardRecordingRef = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const stopTracks = useCallback((stream = streamRef.current) => {
+    stream?.getTracks().forEach((track) => track.stop());
+    if (stream === streamRef.current) streamRef.current = null;
+  }, []);
 
   const requestPermission = useCallback(async () => {
+    const attempt = ++permissionAttemptRef.current;
+    setError(null);
     setState("requesting_permission");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (attempt !== permissionAttemptRef.current) {
+        stopTracks(stream);
+        return;
+      }
       streamRef.current = stream;
       setState("ready");
     } catch {
+      if (attempt !== permissionAttemptRef.current) return;
       setError("Microphone access denied. Please allow microphone and try again.");
       setState("error");
     }
-  }, []);
+  }, [stopTracks]);
 
   const startRecording = useCallback(() => {
     if (!streamRef.current) return;
     chunksRef.current = [];
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-    const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType });
-    mediaRecorderRef.current = mediaRecorder;
+    discardRecordingRef.current = false;
+    try {
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType });
+      mediaRecorderRef.current = mediaRecorder;
 
-    mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
 
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      audioBlobRef.current = blob;
-      const url = URL.createObjectURL(blob);
-      setAudioUrl(url);
-      setState("preview");
-    };
+      mediaRecorder.onstop = () => {
+        mediaRecorderRef.current = null;
+        if (discardRecordingRef.current) {
+          chunksRef.current = [];
+          return;
+        }
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        audioBlobRef.current = blob;
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        setState("preview");
+      };
 
-    mediaRecorder.start(100);
-    setState("recording");
+      mediaRecorder.start(100);
+      setState("recording");
 
-    let remaining = maxDurationSec;
-    setCountdown(remaining);
-
-    timerRef.current = setInterval(() => {
-      remaining -= 1;
+      let remaining = maxDurationSec;
       setCountdown(remaining);
-      if (remaining <= 0) stopRecording();
-    }, 1000);
-  }, [maxDurationSec]);
+
+      timerRef.current = setInterval(() => {
+        remaining -= 1;
+        setCountdown(remaining);
+        if (remaining <= 0) {
+          clearTimer();
+          mediaRecorderRef.current?.stop();
+          stopTracks();
+        }
+      }, 1000);
+    } catch {
+      stopTracks();
+      setError("Unable to start recording. Please try again.");
+      setState("error");
+    }
+  }, [clearTimer, maxDurationSec, stopTracks]);
 
   const stopRecording = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
+    clearTimer();
     mediaRecorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-  }, []);
+    stopTracks();
+  }, [clearTimer, stopTracks]);
 
-  const reRecord = useCallback(async () => {
+  const cancelCapture = useCallback(() => {
+    permissionAttemptRef.current += 1;
+    clearTimer();
+    discardRecordingRef.current = true;
+    if (mediaRecorderRef.current?.state !== "inactive") {
+      mediaRecorderRef.current?.stop();
+    }
+    mediaRecorderRef.current = null;
+    stopTracks();
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl(null);
     audioBlobRef.current = null;
-    // Re-request mic
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      setState("ready");
-    } catch {
-      setError("Microphone access denied.");
-      setState("error");
-    }
-  }, [audioUrl]);
+    chunksRef.current = [];
+    setError(null);
+    setCountdown(maxDurationSec);
+    setState("idle");
+  }, [audioUrl, clearTimer, maxDurationSec, stopTracks]);
+
+  const reRecord = useCallback(() => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioUrl(null);
+    audioBlobRef.current = null;
+    requestPermission();
+  }, [audioUrl, requestPermission]);
 
   const submit = useCallback(async () => {
     if (!audioBlobRef.current) return;
+    setError(null);
     setState("uploading");
 
     try {
       const mimeType = audioBlobRef.current.type;
 
-      // 1. Fetch session metadata to get allowed_origins
+      // 1. Fetch session metadata. Origin policy is authorized by the server.
       const sessionMetaRes = await fetch(
         `${API_BASE}/public/session/${sessionToken}`,
         {
@@ -141,21 +184,8 @@ export default function Recorder({
         throw new Error("Failed to fetch session metadata");
       }
 
-      const sessionMeta = await sessionMetaRes.json();
-      
-      // 2. Validate origin if allowed_origins is set
-      if (sessionMeta.allowed_origins) {
-        const currentOrigin = window.location.origin;
-        const allowedOriginsList = sessionMeta.allowed_origins
-          .split(",")
-          .map((o: string) => o.trim());
-        
-        if (!allowedOriginsList.includes(currentOrigin)) {
-          throw new Error(
-            `Origin ${currentOrigin} is not allowed. Permitted origins: ${sessionMeta.allowed_origins}`
-          );
-        }
-      }
+      const sessionMeta = (await sessionMetaRes.json()) as { allowedOrigins: string[] };
+      void sessionMeta.allowedOrigins;
 
       // 3. Open session — must send explicit body to satisfy Fastify's JSON parser
       await fetch(`${API_BASE}/public/session/${sessionToken}/open`, {
@@ -208,7 +238,7 @@ export default function Recorder({
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       setError(message);
-      setState("error");
+      setState(audioBlobRef.current ? "preview" : "error");
     }
   }, [sessionToken, consentGiven, onSubmitted]);
 
@@ -353,10 +383,13 @@ export default function Recorder({
 
         {/* REQUESTING PERMISSION */}
         {state === "requesting_permission" && (
-          <div className="rec-permission-text">
-            <div className="rec-spinner" />
-            Requesting microphone...
-          </div>
+          <>
+            <div className="rec-permission-text">
+              <div className="rec-spinner" />
+              Requesting microphone...
+            </div>
+            <button className="rec-action-btn secondary" onClick={cancelCapture}>Cancel</button>
+          </>
         )}
 
         {/* READY */}
@@ -385,6 +418,7 @@ export default function Recorder({
                 <span>{consentText ?? "By recording, you consent to audio processing."}</span>
               </label>
             )}
+            <button className="rec-action-btn secondary" onClick={cancelCapture}>Cancel</button>
           </>
         )}
 
@@ -398,6 +432,7 @@ export default function Recorder({
               </div>
             </button>
             <span className="rec-hint">Tap to stop early</span>
+            <button className="rec-action-btn secondary" onClick={cancelCapture}>Cancel</button>
           </>
         )}
 
@@ -405,12 +440,16 @@ export default function Recorder({
         {state === "preview" && audioUrl && (
           <>
             <audio src={audioUrl} controls className="rec-audio" />
+            {error && <div className="rec-error-text">{error}</div>}
             <div className="rec-actions">
               <button className="rec-action-btn secondary" onClick={reRecord}>
                 Re-record
               </button>
               <button className="rec-action-btn primary" onClick={submit}>
                 Send feedback
+              </button>
+              <button className="rec-action-btn secondary" onClick={cancelCapture}>
+                Cancel
               </button>
             </div>
           </>
@@ -439,7 +478,7 @@ export default function Recorder({
             <div className="rec-error-text">{error}</div>
             <button
               className="rec-action-btn secondary"
-              onClick={() => { setError(null); setState("idle"); }}
+              onClick={cancelCapture}
               style={{width:"100%"}}
             >
               Try again

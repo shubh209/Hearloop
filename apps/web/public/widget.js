@@ -1,13 +1,13 @@
 /**
  * Hearloop Widget v1.0.0
  * Embeddable voice feedback capture widget
- * Usage: Hearloop.init({ apiKey, promptText, maxDurationSec, position })
+ * Usage: Hearloop.init({ embedKey, promptText, maxDurationSec, position })
  */
 (function (global) {
     'use strict';
   
     const DEFAULT_CONFIG = {
-      apiKey: '',
+      embedKey: '',
       promptText: 'How was your experience today?',
       maxDurationSec: 5,
       position: 'bottom-right',
@@ -279,7 +279,7 @@
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              apiKey: this.config.apiKey,
+              embedKey: this.config.embedKey,
             }),
           });
 
@@ -444,8 +444,8 @@
   
     global.Hearloop = {
       init(config) {
-        if (!config.apiKey) {
-          console.warn('[Hearloop] apiKey required');
+        if (!config.embedKey) {
+          console.warn('[Hearloop] embedKey required');
           return;
         }
         return new HearloopWidget(config);
