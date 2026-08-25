@@ -36,6 +36,11 @@ jobs:
         run: npm ci
 
       - run: npm run build --workspace=apps/api
+      - name: Initialize test database schema
+        run: |
+          for migration in packages/db/migrations/*.sql; do
+            psql "$TEST_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$migration"
+          done
       - run: npm test --workspace=apps/api
       - run: npm run build --workspace=apps/web
       - run: npm run build --workspace=apps/quicklube-demo

@@ -49,6 +49,14 @@ The constraint-error log lines are expected negative assertions performed by
 the migration contract; its final result was PASS. No developer or production
 database URL was used.
 
+In CI, the PostgreSQL 17 service starts with an empty `hearloop_test` database.
+After the API build and before API Jest, the validation job applies every
+checked-in migration in filename order with `psql -X -v ON_ERROR_STOP=1`.
+Therefore database-enabled integration suites see the current schema on a clean
+runner. The later `011_media_evidence_pinning.test.sh` step remains independent:
+it drops and recreates `public`, reapplies its prerequisite migrations, and
+asserts the migration compatibility and constraints from a clean schema.
+
 ## Fresh local verification matrix
 
 The commands below were run once, sequentially, after the controlled workflow
